@@ -30,18 +30,22 @@
 #include <sys/stat.h>
 #include <sys/inotify.h>
 #include <fcntl.h>
+#include <pwd.h>
+#include <grp.h>
 
 // Unicode is complex enough already and we might make assumptions
 #ifndef __STDC_ISO_10646__
 #error Unicode required for wchar_t
 #endif
 
+// Trailing return types make C++ syntax suck considerably less
+#define fun static auto
+
 using namespace std;
 
 // For some reason handling of encoding in C and C++ is extremely annoying
 // and C++17 ironically obsoletes C++11 additions that made it less painful
-static wstring
-to_wide (const string &multi) {
+fun to_wide (const string &multi) -> wstring {
 	wstring wide; wchar_t w; mbstate_t mb {};
 	size_t n = 0, len = multi.length () + 1;
 	while (auto res = mbrtowc (&w, multi.c_str () + n, len - n, &mb)) {
@@ -54,8 +58,7 @@ to_wide (const string &multi) {
 	return wide;
 }
 
-static string
-to_mb (const wstring &wide) {
+fun to_mb (const wstring &wide) -> string {
 	string mb; char buf[MB_LEN_MAX + 1]; mbstate_t mbs {};
 	for (size_t n = 0; n <= wide.length (); n++) {
 		auto res = wcrtomb (buf, wide.c_str ()[n], &mbs);
@@ -68,8 +71,7 @@ to_mb (const wstring &wide) {
 	return mb;
 }
 
-static int
-print (const wstring &wide, int limit) {
+fun print (const wstring &wide, int limit) -> int {
 	int total_width = 0;
 	for (wchar_t w : wide) {
 		// TODO: controls as ^X, show in inverse
@@ -88,16 +90,14 @@ print (const wstring &wide, int limit) {
 	return total_width;
 }
 
-static int
-prefix (const wstring &in, const wstring &of) {
+fun prefix (const wstring &in, const wstring &of) -> int {
 	int score = 0;
 	for (size_t i = 0; i < of.size () && in.size () >= i && in[i] == of[i]; i++)
 		score++;
 	return score;
 }
 
-static string
-shell_escape (const string &v) {
+fun shell_escape (const string &v) -> string {
 	string result;
 	for (auto c : v)
 		if (c == '\'')
@@ -105,6 +105,35 @@ shell_escape (const string &v) {
 		else
 			result += c;
 	return "'" + result + "'";
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+using ncstring = basic_string<cchar_t>;
+
+fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
+	ncstring res;
+	for (auto c : w)
+		res.push_back ({attrs, {c}});
+	return res;
+}
+
+fun print_nc (const ncstring &nc, int limit) -> int {
+	int total_width = 0;
+	for (cchar_t c : nc) {
+		// TODO: controls as ^X, show in inverse
+		auto &w = c.chars[0];
+		if (!isprint (w))
+			w = L'?';
+
+		int width = wcwidth (w);
+		if (total_width + width > limit)
+			break;
+
+		add_wch (&c);
+		total_width += width;
+	}
+	return total_width;
 }
 
 // --- Application -------------------------------------------------------------
@@ -131,14 +160,71 @@ static struct {
 	int inotify_fd, inotify_wd = -1;
 	bool out_of_date;
 
+	bool full_view;
+
 	wchar_t editor;
 	wstring editor_line;
 } g;
 
-static inline int visible_lines () { return max (0, LINES - 2); }
+fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
-static void
-update () {
+fun make_mode (mode_t m) -> wstring {
+	auto type = L'-';
+	if (S_ISDIR  (m)) type = L'd';
+	if (S_ISBLK  (m)) type = L'b';
+	if (S_ISCHR  (m)) type = L'c';
+	if (S_ISLNK  (m)) type = L'l';
+	if (S_ISFIFO (m)) type = L'p';
+	if (S_ISSOCK (m)) type = L's';
+
+	wstring mode = {type};
+	mode += L"r-"[!(m & S_IRUSR)];
+	mode += L"w-"[!(m & S_IWUSR)];
+	mode += ((m & S_ISUID) ? L"sS" : L"x-")[!(m & S_IXUSR)];
+	mode += L"r-"[!(m & S_IRGRP)];
+	mode += L"w-"[!(m & S_IWGRP)];
+	mode += ((m & S_ISGID) ? L"sS" : L"x-")[!(m & S_IXGRP)];
+	mode += L"r-"[!(m & S_IROTH)];
+	mode += L"w-"[!(m & S_IWOTH)];
+	mode += ((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)];
+	return mode;
+}
+
+fun make_row (const entry &entry) -> vector<ncstring> {
+	vector<ncstring> result;
+	const auto &info = entry.info;
+	result.push_back (apply_attrs (make_mode (info.st_mode), 0));
+
+	if (auto u = getpwuid (info.st_uid)) {
+		result.push_back (apply_attrs (to_wide (u->pw_name), 0));
+	} else {
+		result.push_back (apply_attrs (to_wstring (info.st_uid), 0));
+	}
+
+	if (auto g = getgrgid (info.st_gid)) {
+		result.push_back (apply_attrs (to_wide (g->gr_name), 0));
+	} else {
+		result.push_back (apply_attrs (to_wstring (info.st_gid), 0));
+	}
+
+	// TODO: human-readable
+	result.push_back (apply_attrs (to_wstring (info.st_size), 0));
+
+	auto now = time (NULL);
+	auto now_year = localtime (&now)->tm_year;
+
+	char buf[32] = "";
+	auto tm = localtime (&info.st_mtime);
+	strftime (buf, sizeof buf,
+		(tm->tm_year == now_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
+	result.push_back (apply_attrs (to_wide (buf), 0));
+
+	// TODO: symlink target and whatever formatting
+	result.push_back (apply_attrs (to_wide (entry.filename), 0));
+	return result;
+}
+
+fun update () {
 	erase ();
 
 	int available = visible_lines ();
@@ -149,23 +235,17 @@ update () {
 		if (index == g.cursor)
 			attron (A_REVERSE);
 
+		// TODO: use g.full_view, align properly (different columns differently)
+		// XXX: maybe this should return a struct instead
+		auto row = make_row (g.entries[index]);
+
 		move (available - used + i, 0);
-		auto &entry = g.entries[index];
-
-		// TODO display more information from "info"
-		char modes[] = "- ";
-		const auto &stat = entry.info;
-		if (S_ISDIR  (stat.st_mode)) modes[0] = 'd';
-		if (S_ISBLK  (stat.st_mode)) modes[0] = 'b';
-		if (S_ISCHR  (stat.st_mode)) modes[0] = 'c';
-		if (S_ISLNK  (stat.st_mode)) modes[0] = 'l';
-		if (S_ISFIFO (stat.st_mode)) modes[0] = 'p';
-		if (S_ISSOCK (stat.st_mode)) modes[0] = 's';
-		addstr (modes);
-
-		// TODO show symbolic link target
-		auto width = COLS - 2;
-		hline (' ', width - print (to_wide (entry.filename), width));
+		auto limit = COLS, used = 0;
+		for (auto &i : row) {
+			used += print_nc (i, limit - used);
+			used += print (L" ", limit - used);
+		}
+		hline (' ', limit - used);
 	}
 
 	attrset (A_BOLD);
@@ -186,8 +266,7 @@ update () {
 	refresh ();
 }
 
-static void
-reload () {
+fun reload () {
 	char buf[4096];
 	g.cwd = getcwd (buf, sizeof buf);
 
@@ -217,8 +296,7 @@ reload () {
 		IN_ALL_EVENTS | IN_ONLYDIR);
 }
 
-static void
-search (const wstring &needle) {
+fun search (const wstring &needle) {
 	int best = g.cursor, best_n = 0;
 	for (int i = 0; i < int (g.entries.size ()); i++) {
 		auto o = (i + g.cursor) % g.entries.size ();
@@ -231,8 +309,7 @@ search (const wstring &needle) {
 	g.cursor = best;
 }
 
-static void
-handle_editor (wint_t c, bool is_char) {
+fun handle_editor (wint_t c, bool is_char) {
 	if (c == 27 || c == (CTRL L'g')) {
 		g.editor_line.clear ();
 		g.editor = 0;
@@ -256,8 +333,7 @@ handle_editor (wint_t c, bool is_char) {
 		beep ();
 }
 
-static bool
-handle (wint_t c, bool is_char) {
+fun handle (wint_t c, bool is_char) -> bool {
 	// If an editor is active, let it handle the key instead and eat it
 	if (g.editor) {
 		handle_editor (c, is_char);
@@ -329,6 +405,10 @@ handle (wint_t c, bool is_char) {
 	case CTRL L'e': g.offset++; break;
 	case CTRL L'y': g.offset--; break;
 
+	case ALT | L't':
+		g.full_view = !g.full_view;
+		break;
+
 	case ALT | L'e':
 		g.editor_line = to_wide (current.filename);
 		// Fall-through
@@ -368,8 +448,7 @@ handle (wint_t c, bool is_char) {
 	return true;
 }
 
-static void
-inotify_check () {
+fun inotify_check () {
 	// Only provide simple indication that contents might have changed
 	char buf[4096]; ssize_t len;
 	bool changed = false;
@@ -385,8 +464,7 @@ inotify_check () {
 		update ();
 }
 
-int
-main (int argc, char *argv[]) {
+int main (int argc, char *argv[]) {
 	(void) argc;
 	(void) argv;
 
