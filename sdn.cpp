@@ -135,27 +135,21 @@ static struct {
 	wstring editor_line;
 } g;
 
-static inline int visible_lines () { return LINES - 2; }
+static inline int visible_lines () { return max (0, LINES - 2); }
 
 static void
 update () {
 	erase ();
 
-	attrset (A_BOLD);
-	mvprintw (0, 0, "%s", g.cwd.c_str ());
-	if (g.out_of_date)
-		addstr (" [+]");
-
-	for (int i = 0; i < visible_lines (); i++) {
-		int index = g.offset + i;
-		if (index >= int (g.entries.size ()))
-			break;
-
+	int available = visible_lines ();
+	int used = min (available, int (g.entries.size ()) - g.offset);
+	for (int i = 0; i < used; i++) {
 		attrset (0);
+		int index = g.offset + i;
 		if (index == g.cursor)
 			attron (A_REVERSE);
 
-		move (2 + i, 0);
+		move (available - used + i, 0);
 		auto &entry = g.entries[index];
 
 		// TODO display more information from "info"
@@ -174,12 +168,17 @@ update () {
 		hline (' ', width - print (to_wide (entry.filename), width));
 	}
 
+	attrset (A_BOLD);
+	mvprintw (LINES - 2, 0, "%s", g.cwd.c_str ());
+	if (g.out_of_date)
+		addstr (" [+]");
+
 	attrset (0);
 	if (g.editor) {
-		move (1, 0);
+		move (LINES - 1, 0);
 		wchar_t prefix[] = { g.editor, L' ', L'\0' };
 		addwstr (prefix);
-		move (1, print (g.editor_line, COLS - 3) + 2);
+		move (LINES - 1, print (g.editor_line, COLS - 3) + 2);
 		curs_set (1);
 	} else
 		curs_set (0);
