@@ -186,23 +186,33 @@ static struct {
 	wstring editor_line;                // Current user input
 } g;
 
-fun make_row (const entry &entry) -> vector<ncstring> {
-	vector<ncstring> result;
+// TODO: this should probably be cached within `struct entry`
+struct row {
+	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
+	ncstring cols[COLUMNS];
+};
+
+fun make_row (const entry &entry) -> row {
+	row r;
 	const auto &info = entry.info;
-	result.push_back (apply_attrs (decode_mode (info.st_mode), 0));
+	r.cols[row::MODES] = apply_attrs (decode_mode (info.st_mode), 0);
 
+	auto user = to_wstring (info.st_uid);
 	if (auto u = getpwuid (info.st_uid))
-		result.push_back (apply_attrs (to_wide (u->pw_name), 0));
-	else
-		result.push_back (apply_attrs (to_wstring (info.st_uid), 0));
+		user = to_wide (u->pw_name);
+	r.cols[row::USER] = apply_attrs (user, 0);
 
+	auto group = to_wstring (info.st_gid);
 	if (auto g = getgrgid (info.st_gid))
-		result.push_back (apply_attrs (to_wide (g->gr_name), 0));
-	else
-		result.push_back (apply_attrs (to_wstring (info.st_gid), 0));
+		group = to_wide (g->gr_name);
+	r.cols[row::GROUP] = apply_attrs (group, 0);
 
-	// TODO: human-readable
-	result.push_back (apply_attrs (to_wstring (info.st_size), 0));
+	auto size = to_wstring (info.st_size);
+	if      (info.st_size >> 40) size = to_wstring (info.st_size >> 40) + L"T";
+	else if (info.st_size >> 30) size = to_wstring (info.st_size >> 30) + L"G";
+	else if (info.st_size >> 20) size = to_wstring (info.st_size >> 20) + L"M";
+	else if (info.st_size >> 10) size = to_wstring (info.st_size >> 10) + L"K";
+	r.cols[row::SIZE] = apply_attrs (size, 0);
 
 	auto now = time (NULL);
 	auto now_year = localtime (&now)->tm_year;
@@ -211,11 +221,11 @@ fun make_row (const entry &entry) -> vector<ncstring> {
 	auto tm = localtime (&info.st_mtime);
 	strftime (buf, sizeof buf,
 		(tm->tm_year == now_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
-	result.push_back (apply_attrs (to_wide (buf), 0));
+	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
 
 	// TODO: symlink target and whatever formatting
-	result.push_back (apply_attrs (to_wide (entry.filename), 0));
-	return result;
+	r.cols[row::FILENAME] = apply_attrs (to_wide (entry.filename), 0);
+	return r;
 }
 
 fun inline visible_lines () -> int { return max (0, LINES - 2); }
@@ -237,7 +247,7 @@ fun update () {
 
 		move (available - used + i, 0);
 		auto limit = COLS, used = 0;
-		for (auto &i : row) {
+		for (auto &i : row.cols) {
 			used += print (i, limit - used);
 			used += print (apply_attrs (L" ", 0), limit - used);
 		}
