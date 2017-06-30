@@ -41,20 +41,43 @@ zsh
 ---
 To start using this navigator, put the following in your .zshrc:
 ....
-navigate () {
+sdn-navigate () {
 	# ... possibly zle-line-init
-	eval `navigator`
+	eval `sdn`
 	[ -z "$cd" ] || cd "$cd"
 	[ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
 	zle reset-prompt
 	# ... possibly zle-line-finish
 }
-zle -N navigate
-bindkey '\eo' navigate
+zle -N sdn-navigate
+bindkey '\eo' sdn-navigate
 ....
 
-As far as I'm aware, bash cannot be used for this, as there is no command to
-reset the prompt from within a `bind -x` handler.
+bash
+----
+Here we can't reset the prompt from within a `bind -x` handler but there is
+an acceptable workaround:
+....
+sdn-navigate () {
+	SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
+	READLINE_LINE=
+
+	eval `sdn`
+	[[ -z "$cd" ]] || cd "$cd"
+	[[ -z "$insert" ]] || {
+		SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
+		((SDN_P=SDN_P+${#insert}+1))
+	}
+}
+sdn-restore () {
+	READLINE_LINE=$SDN_L READLINE_POINT=$SDN_P
+	unset SDN_L SDN_P
+}
+
+bind -x '"\200": sdn-navigate'
+bind -x '"\201": sdn-restore'
+bind '"\eo":"\200\C-m\201"'
+....
 
 Colors
 ------
