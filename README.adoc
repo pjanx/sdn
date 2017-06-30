@@ -56,6 +56,17 @@ bindkey '\eo' navigate
 As far as I'm aware, bash cannot be used for this, as there is no command to
 reset the prompt from within a `bind -x` handler.
 
+Colors
+------
+Here is an example of a '~/.config/sdn/look' file; the format is similar to
+that of git, only named colors aren't supported:
+....
+cursor 231 202
+bar 16 255 ul
+cwd bold
+input
+....
+
 Contributing and Support
 ------------------------
 Use this project's GitHub to report any bugs, request features, or submit pull

@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <cwchar>
 #include <climits>
+#include <cstdlib>
+#include <fstream>
 
 #include <ncurses.h>
 #include <unistd.h>
@@ -40,6 +42,10 @@
 
 // Trailing return types make C++ syntax suck considerably less
 #define fun static auto
+
+#ifndef A_ITALIC
+#define A_ITALIC 0
+#endif
 
 using namespace std;
 
@@ -78,6 +84,19 @@ fun prefix_length (const wstring &in, const wstring &of) -> int {
 	return score;
 }
 
+fun split (const string &s, const string &sep, vector<string> &out) {
+	size_t mark = 0, p = s.find (sep);
+	for (; p != string::npos; p = s.find (sep, (mark = p + sep.length ())))
+		if (mark < p)
+			out.push_back (s.substr (mark, p - mark));
+	if (mark < s.length ())
+		out.push_back (s.substr (mark));
+}
+
+fun split (const string &s, const string &sep) -> vector<string> {
+	vector<string> result; split (s, sep, result); return result;
+}
+
 fun shell_escape (const string &v) -> string {
 	string result;
 	for (auto c : v)
@@ -108,6 +127,35 @@ fun decode_mode (mode_t m) -> wstring {
 		L"w-"[!(m & S_IWOTH)],
 		((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)],
 	};
+}
+
+template<class T> fun shift (vector<T> &v) -> T {
+	auto front = v.front (); v.erase (begin (v)); return front;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+fun xdg_config_home () -> string {
+	const char *user_dir = getenv ("XDG_CONFIG_HOME");
+	if (user_dir && user_dir[0] == '/')
+		return user_dir;
+
+	const char *home_dir = getenv ("HOME");
+	return string (home_dir ? home_dir : "") + "/.config";
+}
+
+// In C++17 we will get <optional> but until then there's unique_ptr
+fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
+	vector<string> dirs {xdg_config_home ()};
+	const char *system_dirs = getenv ("XDG_CONFIG_DIRS");
+	split (system_dirs ? system_dirs : "/etc/xdg", ":", dirs);
+	for (const auto &dir : dirs) {
+		if (dir[0] != '/')
+			continue;
+		if (ifstream ifs {dir + suffix})
+			return make_unique<ifstream> (move (ifs));
+	}
+	return nullptr;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -175,6 +223,30 @@ fun align (const ncstring &nc, int target) -> ncstring {
 		: apply_attrs (wstring (missing, L' '), 0) + nc;
 }
 
+fun allocate_pair (short fg, short bg) -> short {
+	static short counter = 1; init_pair (counter, fg, bg); return counter++;
+}
+
+fun decode_attrs (const vector<string> &attrs) -> chtype {
+	chtype result = 0; int fg = -1, bg = -1, colors = 0;
+	for (const auto &s : attrs) {
+		char *end; auto color = strtol (s.c_str (), &end, 10);
+		if (!*end && color >= -1 && color < COLORS) {
+			if    (++colors == 1) fg = color;
+			else if (colors == 2) bg = color;
+		}
+		else if (s == "bold")    result |= A_BOLD;
+		else if (s == "dim")     result |= A_DIM;
+		else if (s == "ul")      result |= A_UNDERLINE;
+		else if (s == "blink")   result |= A_BLINK;
+		else if (s == "reverse") result |= A_REVERSE;
+		else if (s == "italic")  result |= A_ITALIC;
+	}
+	if (fg != -1 || bg != -1)
+		result |= COLOR_PAIR (allocate_pair (fg, bg));
+	return result;
+}
+
 // --- Application -------------------------------------------------------------
 
 #define CTRL 31 &
@@ -208,6 +280,10 @@ static struct {
 
 	wchar_t editor;                     // Prompt character for editing
 	wstring editor_line;                // Current user input
+
+	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_COUNT };
+	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0};
+	const char *attr_names[AT_COUNT] = {"cursor", "bar", "cwd", "input"};
 } g;
 
 fun make_row (const string &filename, const struct stat &info) -> row {
@@ -255,33 +331,32 @@ fun update () {
 	int available = visible_lines ();
 	int used = min (available, int (g.entries.size ()) - g.offset);
 	for (int i = 0; i < used; i++) {
-		attrset (0);
+		auto index = g.offset + i;
+		attrset (index == g.cursor ? g.attrs[g.AT_CURSOR] : 0);
 		move (available - used + i, 0);
 
-		int index = g.offset + i;
-		if (index == g.cursor)
-			attron (A_REVERSE);
-
-		auto limit = COLS, used = 0;
+		auto used = 0;
 		for (int col = start_column; col < row::COLUMNS; col++) {
 			const auto &field = g.entries[index].row.cols[col];
 			auto aligned = align (field, alignment[col] * g.max_widths[col]);
-			used += print (aligned + apply_attrs (L" ", 0), limit - used);
+			used += print (aligned + apply_attrs (L" ", 0), COLS - used);
 		}
-		hline (' ', limit - used);
+		hline (' ', COLS - used);
 	}
 
-	attrset (A_BOLD);
-	mvprintw (LINES - 2, 0, "%s", g.cwd.c_str ());
+	auto bar = apply_attrs (to_wide (g.cwd), g.attrs[g.AT_CWD]);
 	if (g.out_of_date)
-		addstr (" [+]");
+		bar += apply_attrs (L" [+]", 0);
 
-	attrset (0);
+	move (LINES - 2, 0);
+	attrset (g.attrs[g.AT_BAR]);
+	hline (' ', COLS - print (bar, COLS));
+
+	attrset (g.attrs[g.AT_INPUT]);
 	if (g.editor) {
 		move (LINES - 1, 0);
-		wchar_t prefix[] = { g.editor, L' ', L'\0' };
-		addwstr (prefix);
-		move (LINES - 1, print (apply_attrs (g.editor_line, 0), COLS - 3) + 2);
+		auto p = apply_attrs ({g.editor, L' ', L'\0'}, 0);
+		move (LINES - 1, print (p + apply_attrs (g.editor_line, 0), COLS - 1));
 		curs_set (1);
 	} else
 		curs_set (0);
@@ -492,6 +567,29 @@ fun inotify_check () {
 		update ();
 }
 
+fun load_configuration () {
+	auto config = xdg_config_find ("/" PROJECT_NAME "/look");
+	if (!config)
+		return;
+
+	// Bail out on dumb terminals, there's not much one can do about them
+	if (!has_colors () || start_color () == ERR || use_default_colors () == ERR)
+		return;
+
+	string line;
+	while (getline (*config, line)) {
+		vector<string> tokens = split (line, " ");
+		if (tokens.empty () || line.front () == '#')
+			continue;
+		auto name = shift (tokens);
+		for (int i = 0; i < g.AT_COUNT; i++)
+			if (name == g.attr_names[i])
+				g.attrs[i] = decode_attrs (tokens);
+	}
+
+	// TODO: load and use LS_COLORS
+}
+
 int main (int argc, char *argv[]) {
 	(void) argc;
 	(void) argv;
@@ -518,6 +616,8 @@ int main (int argc, char *argv[]) {
 		cerr << "cannot initialize screen" << endl;
 		return 1;
 	}
+
+	load_configuration ();
 	reload ();
 	auto start_dir = g.cwd;
 
