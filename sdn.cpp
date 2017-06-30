@@ -71,6 +71,46 @@ fun to_mb (const wstring &wide) -> string {
 	return mb;
 }
 
+fun prefix_length (const wstring &in, const wstring &of) -> int {
+	int score = 0;
+	for (size_t i = 0; i < of.size () && in.size () >= i && in[i] == of[i]; i++)
+		score++;
+	return score;
+}
+
+fun shell_escape (const string &v) -> string {
+	string result;
+	for (auto c : v)
+		if (c == '\'')
+			result += "'\\''";
+		else
+			result += c;
+	return "'" + result + "'";
+}
+
+fun decode_type (mode_t m) -> wchar_t {
+	if (S_ISDIR  (m)) return L'd'; if (S_ISBLK  (m)) return L'b';
+	if (S_ISCHR  (m)) return L'c'; if (S_ISLNK  (m)) return L'l';
+	if (S_ISFIFO (m)) return L'p'; if (S_ISSOCK (m)) return L's';
+	return L'-';
+}
+
+/// Return the modes of a file in the usual stat/ls format
+fun decode_mode (mode_t m) -> wstring {
+	return { decode_type (m),
+		L"r-"[!(m & S_IRUSR)],
+		L"w-"[!(m & S_IWUSR)],
+		((m & S_ISUID) ? L"sS" : L"x-")[!(m & S_IXUSR)],
+		L"r-"[!(m & S_IRGRP)],
+		L"w-"[!(m & S_IWGRP)],
+		((m & S_ISGID) ? L"sS" : L"x-")[!(m & S_IXGRP)],
+		L"r-"[!(m & S_IROTH)],
+		L"w-"[!(m & S_IWOTH)],
+		((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)],
+	};
+}
+
+// XXX: maybe we should try to remove this function
 fun print (const wstring &wide, int limit) -> int {
 	int total_width = 0;
 	for (wchar_t w : wide) {
@@ -88,23 +128,6 @@ fun print (const wstring &wide, int limit) -> int {
 		total_width += width;
 	}
 	return total_width;
-}
-
-fun prefix (const wstring &in, const wstring &of) -> int {
-	int score = 0;
-	for (size_t i = 0; i < of.size () && in.size () >= i && in[i] == of[i]; i++)
-		score++;
-	return score;
-}
-
-fun shell_escape (const string &v) -> string {
-	string result;
-	for (auto c : v)
-		if (c == '\'')
-			result += "'\\''";
-		else
-			result += c;
-	return "'" + result + "'";
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -141,71 +164,44 @@ fun print_nc (const ncstring &nc, int limit) -> int {
 #define CTRL 31 &
 
 struct entry {
-	string filename;
-	struct stat info;
-	bool operator< (const entry &other) {
+	string filename; struct stat info;
+	auto operator< (const entry &other) -> bool {
 		auto a = S_ISDIR (info.st_mode);
 		auto b = S_ISDIR (other.info.st_mode);
 		return (a && !b) || (a == b && filename < other.filename);
 	}
 };
 
-// Between std and ncurses, make at least the globals stand out
 static struct {
-	string cwd;
-	vector<entry> entries;
-	int offset, cursor;
-	string chosen;
-	bool chosen_full;
-	int inotify_fd, inotify_wd = -1;
-	bool out_of_date;
+	string cwd;                         // Current working directory
+	vector<entry> entries;              // Current directory entries
+	int offset, cursor;                 // Scroll offset and cursor position
+	bool full_view;                     // Whether to show extended information
 
-	bool full_view;
+	string chosen;                      // Chosen item for the command line
+	bool chosen_full;                   // Use the full path
 
-	wchar_t editor;
-	wstring editor_line;
+	int inotify_fd, inotify_wd = -1;    // File watch
+	bool out_of_date;                   // Entries may be out of date
+
+	wchar_t editor;                     // Prompt character for editing
+	wstring editor_line;                // Current user input
 } g;
-
-fun inline visible_lines () -> int { return max (0, LINES - 2); }
-
-fun make_mode (mode_t m) -> wstring {
-	auto type = L'-';
-	if (S_ISDIR  (m)) type = L'd';
-	if (S_ISBLK  (m)) type = L'b';
-	if (S_ISCHR  (m)) type = L'c';
-	if (S_ISLNK  (m)) type = L'l';
-	if (S_ISFIFO (m)) type = L'p';
-	if (S_ISSOCK (m)) type = L's';
-
-	wstring mode = {type};
-	mode += L"r-"[!(m & S_IRUSR)];
-	mode += L"w-"[!(m & S_IWUSR)];
-	mode += ((m & S_ISUID) ? L"sS" : L"x-")[!(m & S_IXUSR)];
-	mode += L"r-"[!(m & S_IRGRP)];
-	mode += L"w-"[!(m & S_IWGRP)];
-	mode += ((m & S_ISGID) ? L"sS" : L"x-")[!(m & S_IXGRP)];
-	mode += L"r-"[!(m & S_IROTH)];
-	mode += L"w-"[!(m & S_IWOTH)];
-	mode += ((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)];
-	return mode;
-}
 
 fun make_row (const entry &entry) -> vector<ncstring> {
 	vector<ncstring> result;
 	const auto &info = entry.info;
-	result.push_back (apply_attrs (make_mode (info.st_mode), 0));
+	result.push_back (apply_attrs (decode_mode (info.st_mode), 0));
 
-	if (auto u = getpwuid (info.st_uid)) {
+	if (auto u = getpwuid (info.st_uid))
 		result.push_back (apply_attrs (to_wide (u->pw_name), 0));
-	} else {
+	else
 		result.push_back (apply_attrs (to_wstring (info.st_uid), 0));
-	}
 
-	if (auto g = getgrgid (info.st_gid)) {
+	if (auto g = getgrgid (info.st_gid))
 		result.push_back (apply_attrs (to_wide (g->gr_name), 0));
-	} else {
+	else
 		result.push_back (apply_attrs (to_wstring (info.st_gid), 0));
-	}
 
 	// TODO: human-readable
 	result.push_back (apply_attrs (to_wstring (info.st_size), 0));
@@ -223,6 +219,8 @@ fun make_row (const entry &entry) -> vector<ncstring> {
 	result.push_back (apply_attrs (to_wide (entry.filename), 0));
 	return result;
 }
+
+fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
 fun update () {
 	erase ();
@@ -267,8 +265,7 @@ fun update () {
 }
 
 fun reload () {
-	char buf[4096];
-	g.cwd = getcwd (buf, sizeof buf);
+	char buf[4096]; g.cwd = getcwd (buf, sizeof buf);
 
 	auto dir = opendir (".");
 	g.entries.clear ();
@@ -300,7 +297,7 @@ fun search (const wstring &needle) {
 	int best = g.cursor, best_n = 0;
 	for (int i = 0; i < int (g.entries.size ()); i++) {
 		auto o = (i + g.cursor) % g.entries.size ();
-		int n = prefix (to_wide (g.entries[o].filename), needle);
+		int n = prefix_length (to_wide (g.entries[o].filename), needle);
 		if (n > best_n) {
 			best = o;
 			best_n = n;
