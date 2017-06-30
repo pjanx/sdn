@@ -157,12 +157,35 @@ fun print (const ncstring &nc, int limit) -> int {
 	return total_width;
 }
 
+fun compute_width (const ncstring &nc) -> int {
+	int total = 0;
+	for (const auto &c : nc)
+		total += wcwidth (c.chars[0]);
+	return total;
+}
+
+// TODO: maybe we need formatting for the padding passed in?
+fun align (const ncstring &nc, int target) -> ncstring {
+	auto current = compute_width (nc);
+	auto missing = abs (target) - current;
+	if (missing <= 0)
+		return nc;
+	return target < 0
+		? nc + apply_attrs (wstring (missing, L' '), 0)
+		: apply_attrs (wstring (missing, L' '), 0) + nc;
+}
+
 // --- Application -------------------------------------------------------------
 
 #define CTRL 31 &
 
+struct row {
+	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
+	ncstring cols[COLUMNS];
+};
+
 struct entry {
-	string filename; struct stat info;
+	string filename; struct stat info; row row;
 	auto operator< (const entry &other) -> bool {
 		auto a = S_ISDIR (info.st_mode);
 		auto b = S_ISDIR (other.info.st_mode);
@@ -175,6 +198,7 @@ static struct {
 	vector<entry> entries;              // Current directory entries
 	int offset, cursor;                 // Scroll offset and cursor position
 	bool full_view;                     // Whether to show extended information
+	int max_widths[row::COLUMNS];       // Column widths
 
 	string chosen;                      // Chosen item for the command line
 	bool chosen_full;                   // Use the full path
@@ -186,15 +210,8 @@ static struct {
 	wstring editor_line;                // Current user input
 } g;
 
-// TODO: this should probably be cached within `struct entry`
-struct row {
-	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
-	ncstring cols[COLUMNS];
-};
-
-fun make_row (const entry &entry) -> row {
+fun make_row (const string &filename, const struct stat &info) -> row {
 	row r;
-	const auto &info = entry.info;
 	r.cols[row::MODES] = apply_attrs (decode_mode (info.st_mode), 0);
 
 	auto user = to_wstring (info.st_uid);
@@ -224,32 +241,32 @@ fun make_row (const entry &entry) -> row {
 	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
 
 	// TODO: symlink target and whatever formatting
-	r.cols[row::FILENAME] = apply_attrs (to_wide (entry.filename), 0);
+	r.cols[row::FILENAME] = apply_attrs (to_wide (filename), 0);
 	return r;
 }
 
 fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
 fun update () {
+	int start_column = g.full_view ? 0 : row::FILENAME;
+	static int alignment[row::COLUMNS] = { -1, -1, -1, 1, -1, -1 };
 	erase ();
 
 	int available = visible_lines ();
 	int used = min (available, int (g.entries.size ()) - g.offset);
 	for (int i = 0; i < used; i++) {
 		attrset (0);
+		move (available - used + i, 0);
+
 		int index = g.offset + i;
 		if (index == g.cursor)
 			attron (A_REVERSE);
 
-		// TODO: use g.full_view, align properly (different columns differently)
-		// XXX: maybe this should return a struct instead
-		auto row = make_row (g.entries[index]);
-
-		move (available - used + i, 0);
 		auto limit = COLS, used = 0;
-		for (auto &i : row.cols) {
-			used += print (i, limit - used);
-			used += print (apply_attrs (L" ", 0), limit - used);
+		for (int col = start_column; col < row::COLUMNS; col++) {
+			const auto &field = g.entries[index].row.cols[col];
+			auto aligned = align (field, alignment[col] * g.max_widths[col]);
+			used += print (aligned + apply_attrs (L" ", 0), limit - used);
 		}
 		hline (' ', limit - used);
 	}
@@ -284,11 +301,17 @@ fun reload () {
 
 		struct stat sb = {};
 		lstat (f->d_name, &sb);
-		g.entries.push_back ({ f->d_name, sb });
+		g.entries.push_back ({ f->d_name, sb, make_row (f->d_name, sb) });
 	}
 	closedir (dir);
 	sort (begin (g.entries), end (g.entries));
 	g.out_of_date = false;
+
+	for (int col = 0; col < row::COLUMNS; col++) {
+		auto &longest = g.max_widths[col] = 0;
+		for (const auto &entry : g.entries)
+			longest = max (longest, compute_width (entry.row.cols[col]));
+	}
 
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
 	g.offset = min (g.offset, int (g.entries.size ()) - 1);
