@@ -560,7 +560,7 @@ fun inotify_check () {
 		for (char *ptr = buf; ptr < buf + len; ptr += sizeof *e + e->len) {
 			e = (const inotify_event *) buf;
 			if (e->wd == g.inotify_wd)
-				changed = true;
+				changed = g.out_of_date = true;
 		}
 	}
 	if (changed)
