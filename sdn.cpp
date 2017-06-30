@@ -508,6 +508,7 @@ fun handle (wint_t c, bool is_char) -> bool {
 	case CTRL L'e': g.offset++; break;
 	case CTRL L'y': g.offset--; break;
 
+	case L't':
 	case ALT | L't':
 		g.full_view = !g.full_view;
 		break;
