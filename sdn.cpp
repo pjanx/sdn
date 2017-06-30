@@ -110,46 +110,44 @@ fun decode_mode (mode_t m) -> wstring {
 	};
 }
 
-// XXX: maybe we should try to remove this function
-fun print (const wstring &wide, int limit) -> int {
-	int total_width = 0;
-	for (wchar_t w : wide) {
-		// TODO: controls as ^X, show in inverse
-		if (!isprint (w))
-			w = L'?';
-
-		int width = wcwidth (w);
-		if (total_width + width > limit)
-			break;
-
-		cchar_t c = {};
-		c.chars[0] = w;
-		add_wch (&c);
-		total_width += width;
-	}
-	return total_width;
-}
-
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 using ncstring = basic_string<cchar_t>;
 
+fun cchar (chtype attrs, wchar_t c) -> cchar_t {
+	cchar_t ch {};
+	setcchar (&ch, &c, attrs, 0, nullptr);
+	return ch;
+}
+
 fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
 	ncstring res;
 	for (auto c : w)
-		res.push_back ({attrs, {c}});
+		res += cchar (attrs, c);
 	return res;
 }
 
-fun print_nc (const ncstring &nc, int limit) -> int {
-	int total_width = 0;
-	for (cchar_t c : nc) {
-		// TODO: controls as ^X, show in inverse
-		auto &w = c.chars[0];
-		if (!isprint (w))
-			w = L'?';
+fun sanitize_char (chtype attrs, wchar_t c) -> ncstring {
+	if (c < 32)
+		return {cchar (attrs | A_REVERSE, L'^'),
+				cchar (attrs | A_REVERSE, c + 64)};
+	if (!iswprint (c))
+		return {cchar (attrs | A_REVERSE, L'?')};
+	return {cchar (attrs, c)};
+}
 
-		int width = wcwidth (w);
+fun sanitize (const ncstring &nc) -> ncstring {
+	ncstring out;
+	for (cchar_t c : nc)
+		for (size_t i = 0; i < CCHARW_MAX && c.chars[i]; i++)
+			out += sanitize_char (c.attr, c.chars[i]);
+	return out;
+}
+
+fun print (const ncstring &nc, int limit) -> int {
+	int total_width = 0;
+	for (cchar_t c : sanitize (nc)) {
+		int width = wcwidth (c.chars[0]);
 		if (total_width + width > limit)
 			break;
 
@@ -240,8 +238,8 @@ fun update () {
 		move (available - used + i, 0);
 		auto limit = COLS, used = 0;
 		for (auto &i : row) {
-			used += print_nc (i, limit - used);
-			used += print (L" ", limit - used);
+			used += print (i, limit - used);
+			used += print (apply_attrs (L" ", 0), limit - used);
 		}
 		hline (' ', limit - used);
 	}
@@ -256,7 +254,7 @@ fun update () {
 		move (LINES - 1, 0);
 		wchar_t prefix[] = { g.editor, L' ', L'\0' };
 		addwstr (prefix);
-		move (LINES - 1, print (g.editor_line, COLS - 3) + 2);
+		move (LINES - 1, print (apply_attrs (g.editor_line, 0), COLS - 3) + 2);
 		curs_set (1);
 	} else
 		curs_set (0);
@@ -487,7 +485,6 @@ int main (int argc, char *argv[]) {
 		cerr << "cannot initialize screen" << endl;
 		return 1;
 	}
-
 	reload ();
 	auto start_dir = g.cwd;
 
