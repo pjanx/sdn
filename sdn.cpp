@@ -436,6 +436,31 @@ fun handle_editor (wint_t c, bool is_char) {
 		beep ();
 }
 
+fun choose (const entry &entry) -> bool {
+	bool is_dir = S_ISDIR (entry.info.st_mode) != 0;
+	// Dive into directories and accessible symlinks to them
+	if (S_ISLNK (entry.info.st_mode)) {
+		char buf[PATH_MAX];
+		struct stat sb = {};
+		auto len = readlink (entry.filename.c_str (), buf, sizeof buf);
+		is_dir = len > 0 && size_t (len) < sizeof buf
+			&& !stat (entry.filename.c_str (), &sb)
+			&& S_ISDIR (sb.st_mode) != 0;
+	}
+	if (!is_dir) {
+		g.chosen = entry.filename;
+		return false;
+	}
+	if (chdir (entry.filename.c_str ())) {
+		beep ();
+	} else {
+		// TODO: remember cursor going down, then restore going up
+		g.cursor = 0;
+		reload ();
+	}
+	return true;
+}
+
 fun handle (wint_t c, bool is_char) -> bool {
 	// If an editor is active, let it handle the key instead and eat it
 	if (g.editor) {
@@ -462,27 +487,9 @@ fun handle (wint_t c, bool is_char) -> bool {
 		return false;
 	case L'\r':
 	case KEY_ENTER:
-	{
-		bool is_dir = S_ISDIR (current.info.st_mode) != 0;
-		// Dive into directories and accessible symlinks to them
-		if (S_ISLNK (current.info.st_mode)) {
-			char buf[PATH_MAX];
-			struct stat sb = {};
-			auto len = readlink (current.filename.c_str (), buf, sizeof buf);
-			is_dir = len > 0 && size_t (len) < sizeof buf
-				&& !stat (current.filename.c_str (), &sb)
-				&& S_ISDIR (sb.st_mode) != 0;
-		}
-		if (!is_dir) {
-			g.chosen = current.filename;
-			return false;
-		}
-		if (!chdir (current.filename.c_str ())) {
-			g.cursor = 0;
-			reload ();
-		}
-		break;
-	}
+		if (choose (current))
+			break;
+		return false;
 
 	// M-o ought to be the same shortcut the navigator is launched with
 	case ALT | L'o':
