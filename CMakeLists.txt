@@ -20,7 +20,7 @@ pkg_check_modules (NCURSESW QUIET ncursesw)
 
 add_executable (${PROJECT_NAME} ${PROJECT_NAME}.cpp)
 target_include_directories (${PROJECT_NAME} PUBLIC ${NCURSESW_INCLUDE_DIRS})
-target_link_libraries (${PROJECT_NAME} PUBLIC ${NCURSESW_LIBRARIES})
+target_link_libraries (${PROJECT_NAME} PUBLIC ${NCURSESW_LIBRARIES} acl)
 target_compile_features (${PROJECT_NAME} PUBLIC cxx_std_14)
 target_compile_definitions (${PROJECT_NAME} PUBLIC
 	-DPROJECT_NAME=\"${PROJECT_NAME}\" -DPROJECT_VERSION=\"${version}\")

@@ -26,14 +26,17 @@
 #include <cstdlib>
 #include <fstream>
 
-#include <ncurses.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/inotify.h>
+#include <sys/acl.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
+
+#include <acl/libacl.h>
+#include <ncurses.h>
 
 // Unicode is complex enough already and we might make assumptions
 #ifndef __STDC_ISO_10646__
@@ -288,7 +291,15 @@ static struct {
 
 fun make_row (const string &filename, const struct stat &info) -> row {
 	row r;
-	r.cols[row::MODES] = apply_attrs (decode_mode (info.st_mode), 0);
+	auto mode = decode_mode (info.st_mode);
+	if (auto acl = acl_get_file (filename.c_str (), ACL_TYPE_ACCESS)) {
+		mode_t m;
+		// This is a Linux-only extension
+		if (!acl_equiv_mode (acl, &m) && (m ^ info.st_mode) & 0777)
+			mode += L"+";
+		acl_free (acl);
+	}
+	r.cols[row::MODES] = apply_attrs (mode, 0);
 
 	auto user = to_wstring (info.st_uid);
 	if (auto u = getpwuid (info.st_uid))
