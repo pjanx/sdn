@@ -25,16 +25,19 @@
 #include <climits>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <sys/inotify.h>
+#include <sys/types.h>
 #include <sys/acl.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
 
+#include <sys/inotify.h>
+#include <sys/xattr.h>
 #include <acl/libacl.h>
 #include <ncurses.h>
 
@@ -167,8 +170,14 @@ using ncstring = basic_string<cchar_t>;
 
 fun cchar (chtype attrs, wchar_t c) -> cchar_t {
 	cchar_t ch {};
-	setcchar (&ch, &c, attrs, 0, nullptr);
+	setcchar (&ch, &c, attrs, PAIR_NUMBER (attrs), nullptr);
 	return ch;
+}
+
+fun decolor (cchar_t &ch) {
+	wchar_t c[CCHARW_MAX]; attr_t attrs; short pair;
+	getcchar (&ch, c, &attrs, &pair, nullptr);
+	setcchar (&ch, c, attrs &~ A_REVERSE, 0, nullptr);
 }
 
 fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
@@ -260,6 +269,8 @@ struct row {
 };
 
 struct entry {
+	// TODO: how to present symlink target, stat of the target?
+	//   unique_ptr<string> target; struct stat target_info;
 	string filename; struct stat info; row row;
 	auto operator< (const entry &other) -> bool {
 		auto a = S_ISDIR (info.st_mode);
@@ -267,6 +278,21 @@ struct entry {
 		return (a && !b) || (a == b && filename < other.filename);
 	}
 };
+
+#define LS(XX) XX(NORMAL, "no") XX(FILE, "fi") XX(RESET, "rs") \
+	XX(DIRECTORY, "di") XX(SYMLINK, "ln") XX(MULTIHARDLINK, "mh") \
+	XX(FIFO, "pi") XX(SOCKET, "so") XX(DOOR, "do") XX(BLOCK, "bd") \
+	XX(CHARACTER, "cd") XX(ORPHAN, "or") XX(MISSING, "mi") XX(SETUID, "su") \
+	XX(SETGID, "sg") XX(CAPABILITY, "ca") XX(STICKY_OTHER_WRITABLE, "tw") \
+	XX(OTHER_WRITABLE, "ow") XX(STICKY, "st") XX(EXECUTABLE, "ex")
+
+#define XX(id, name) LS_ ## id,
+enum { LS(XX) LS_COUNT };
+#undef XX
+
+#define XX(id, name) name,
+static const char *g_ls_colors[] = {LS(XX)};
+#undef XX
 
 static struct {
 	string cwd;                         // Current working directory
@@ -287,8 +313,12 @@ static struct {
 	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_COUNT };
 	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0};
 	const char *attr_names[AT_COUNT] = {"cursor", "bar", "cwd", "input"};
+
+	map<int, chtype> ls_colors;        // LS_COLORS decoded
+	map<string, chtype> ls_exts;       // LS_COLORS file extensions
 } g;
 
+// XXX: this will probably have to be changed to make_entry and run lstat itself
 fun make_row (const string &filename, const struct stat &info) -> row {
 	row r;
 	auto mode = decode_mode (info.st_mode);
@@ -327,8 +357,56 @@ fun make_row (const string &filename, const struct stat &info) -> row {
 		(tm->tm_year == now_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
 	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
 
-	// TODO: symlink target and whatever formatting
-	r.cols[row::FILENAME] = apply_attrs (to_wide (filename), 0);
+	int type = LS_ORPHAN;
+	auto set = [&](int t) { if (g.ls_colors.count (t)) type = t; };
+	// TODO: LS_MISSING
+	if (S_ISREG (info.st_mode)) {
+		type = LS_FILE;
+		if (info.st_nlink > 1)
+			set (LS_MULTIHARDLINK);
+		if ((info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)))
+			set (LS_EXECUTABLE);
+		if (lgetxattr (filename.c_str (), "security.capability", NULL, 0) >= 0)
+			set (LS_CAPABILITY);
+		if ((info.st_mode & S_ISGID))
+			set (LS_SETGID);
+		if ((info.st_mode & S_ISUID))
+			set (LS_SETUID);
+	} else if (S_ISDIR (info.st_mode)) {
+		type = LS_DIRECTORY;
+		if ((info.st_mode & S_ISVTX))
+			set (LS_STICKY);
+		if ((info.st_mode & S_IWOTH))
+			set (LS_OTHER_WRITABLE);
+		if ((info.st_mode & S_ISVTX) && (info.st_mode & S_IWOTH))
+			set (LS_STICKY_OTHER_WRITABLE);
+	} else if (S_ISLNK (info.st_mode)) {
+		// TODO: LS_ORPHAN
+		type = LS_SYMLINK;
+	} else if (S_ISFIFO (info.st_mode)) {
+		type = LS_FIFO;
+	} else if (S_ISSOCK (info.st_mode)) {
+		type = LS_SOCKET;
+	} else if (S_ISBLK (info.st_mode)) {
+		type = LS_BLOCK;
+	} else if (S_ISCHR (info.st_mode)) {
+		type = LS_CHARACTER;
+	}
+
+	chtype format = 0;
+	const auto x = g.ls_colors.find (type);
+	if (x != g.ls_colors.end ())
+		format = x->second;
+
+	auto dot = filename.find_last_of ('.');
+	if (dot != string::npos && type == LS_FILE) {
+		const auto x = g.ls_exts.find (filename.substr (++dot));
+		if (x != g.ls_exts.end ())
+			format = x->second;
+	}
+
+	// TODO: show symlink target
+	r.cols[row::FILENAME] = apply_attrs (to_wide (filename), format);
 	return r;
 }
 
@@ -343,13 +421,16 @@ fun update () {
 	int used = min (available, int (g.entries.size ()) - g.offset);
 	for (int i = 0; i < used; i++) {
 		auto index = g.offset + i;
-		attrset (index == g.cursor ? g.attrs[g.AT_CURSOR] : 0);
+		bool selected = index == g.cursor;
+		attrset (selected ? g.attrs[g.AT_CURSOR] : 0);
 		move (available - used + i, 0);
 
 		auto used = 0;
 		for (int col = start_column; col < row::COLUMNS; col++) {
 			const auto &field = g.entries[index].row.cols[col];
 			auto aligned = align (field, alignment[col] * g.max_widths[col]);
+			if (selected)
+				for_each (begin (aligned), end (aligned), decolor);
 			used += print (aligned + apply_attrs (L" ", 0), COLS - used);
 		}
 		hline (' ', COLS - used);
@@ -586,6 +667,67 @@ fun inotify_check () {
 		update ();
 }
 
+fun decode_ansi_sgr (const vector<string> &v) -> chtype {
+	vector<int> args;
+	for (const auto &arg : v) {
+		char *end; unsigned long ul = strtoul (arg.c_str (), &end, 10);
+		if (*end != '\0' || ul > 255)
+			return 0;
+		args.push_back (ul);
+	}
+	chtype result = 0; int fg = -1, bg = -1;
+	for (size_t i = 0; i < args.size (); i++) {
+		auto arg = args[i];
+		if (arg == 0) {
+			result = 0; fg = -1; bg = -1;
+		} else if (arg == 1) {
+			result |= A_BOLD;
+		} else if (arg == 4) {
+			result |= A_UNDERLINE;
+		} else if (arg == 5) {
+			result |= A_BLINK;
+		} else if (arg == 7) {
+			result |= A_REVERSE;
+		} else if (arg >= 30 && arg <= 37) {
+			fg = arg - 30;
+		} else if (arg >= 40 && arg <= 47) {
+			bg = arg - 40;
+		// Anything other than indexed colours will be rejected completely
+		} else if (arg == 38 && (i += 2) < args.size ()) {
+			if (args[i - 1] != 5 || (fg = args[i]) >= COLORS)
+				return 0;
+		} else if (arg == 48 && (i += 2) < args.size ()) {
+			if (args[i - 1] != 5 || (bg = args[i]) >= COLORS)
+				return 0;
+		}
+	}
+	if (fg != -1 || bg != -1)
+		result |= COLOR_PAIR (allocate_pair (fg, bg));
+	return result;
+}
+
+fun load_ls_colors (vector<string> colors) {
+	map<string, chtype> attrs;
+	for (const auto &pair : colors) {
+		auto equal = pair.find ('=');
+		if (equal == string::npos)
+			continue;
+		attrs[pair.substr (0, equal)] =
+			decode_ansi_sgr (split (pair.substr (equal + 1), ";"));
+	}
+
+	// `LINK target` i.e. `ln=target` is not supported now
+	for (int i = 0; i < LS_COUNT; i++) {
+		auto m = attrs.find (g_ls_colors[i]);
+		if (m != attrs.end ())
+			g.ls_colors[i] = m->second;
+	}
+	for (const auto &pair : attrs) {
+		if (pair.first.substr (0, 2) == "*.")
+			g.ls_exts[pair.first.substr (2)] = pair.second;
+	}
+}
+
 fun load_configuration () {
 	auto config = xdg_config_find ("/" PROJECT_NAME "/look");
 	if (!config)
@@ -597,7 +739,7 @@ fun load_configuration () {
 
 	string line;
 	while (getline (*config, line)) {
-		vector<string> tokens = split (line, " ");
+		auto tokens = split (line, " ");
 		if (tokens.empty () || line.front () == '#')
 			continue;
 		auto name = shift (tokens);
@@ -606,7 +748,8 @@ fun load_configuration () {
 				g.attrs[i] = decode_attrs (tokens);
 	}
 
-	// TODO: load and use LS_COLORS
+	if (const char *colors = getenv ("LS_COLORS"))
+		load_ls_colors (split (colors, ":"));
 }
 
 int main (int argc, char *argv[]) {
