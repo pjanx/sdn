@@ -318,6 +318,60 @@ static struct {
 	map<string, chtype> ls_exts;       // LS_COLORS file extensions
 } g;
 
+fun ls_format (const string &filename, const struct stat &info) -> chtype {
+	int type = LS_ORPHAN;
+	auto set = [&](int t) { if (g.ls_colors.count (t)) type = t; };
+	// TODO: LS_MISSING if available and this is a missing symlink target
+	// TODO: go by readdir() information when stat() isn't available yet
+	if (S_ISREG (info.st_mode)) {
+		type = LS_FILE;
+		if (info.st_nlink > 1)
+			set (LS_MULTIHARDLINK);
+		if ((info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)))
+			set (LS_EXECUTABLE);
+		if (lgetxattr (filename.c_str (), "security.capability", NULL, 0) >= 0)
+			set (LS_CAPABILITY);
+		if ((info.st_mode & S_ISGID))
+			set (LS_SETGID);
+		if ((info.st_mode & S_ISUID))
+			set (LS_SETUID);
+	} else if (S_ISDIR (info.st_mode)) {
+		type = LS_DIRECTORY;
+		if ((info.st_mode & S_ISVTX))
+			set (LS_STICKY);
+		if ((info.st_mode & S_IWOTH))
+			set (LS_OTHER_WRITABLE);
+		if ((info.st_mode & S_ISVTX) && (info.st_mode & S_IWOTH))
+			set (LS_STICKY_OTHER_WRITABLE);
+	} else if (S_ISLNK (info.st_mode)) {
+		// TODO: LS_ORPHAN when symlink target is missing and either
+		//   a/ "li" is "target", or
+		//   b/ LS_ORPHAN is available
+		type = LS_SYMLINK;
+	} else if (S_ISFIFO (info.st_mode)) {
+		type = LS_FIFO;
+	} else if (S_ISSOCK (info.st_mode)) {
+		type = LS_SOCKET;
+	} else if (S_ISBLK (info.st_mode)) {
+		type = LS_BLOCK;
+	} else if (S_ISCHR (info.st_mode)) {
+		type = LS_CHARACTER;
+	}
+
+	chtype format = 0;
+	const auto x = g.ls_colors.find (type);
+	if (x != g.ls_colors.end ())
+		format = x->second;
+
+	auto dot = filename.find_last_of ('.');
+	if (dot != string::npos && type == LS_FILE) {
+		const auto x = g.ls_exts.find (filename.substr (++dot));
+		if (x != g.ls_exts.end ())
+			format = x->second;
+	}
+	return format;
+}
+
 // XXX: this will probably have to be changed to make_entry and run lstat itself
 fun make_row (const string &filename, const struct stat &info) -> row {
 	row r;
@@ -353,55 +407,8 @@ fun make_row (const string &filename, const struct stat &info) -> row {
 		(tm->tm_year == now_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
 	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
 
-	int type = LS_ORPHAN;
-	auto set = [&](int t) { if (g.ls_colors.count (t)) type = t; };
-	// TODO: LS_MISSING
-	if (S_ISREG (info.st_mode)) {
-		type = LS_FILE;
-		if (info.st_nlink > 1)
-			set (LS_MULTIHARDLINK);
-		if ((info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)))
-			set (LS_EXECUTABLE);
-		if (lgetxattr (filename.c_str (), "security.capability", NULL, 0) >= 0)
-			set (LS_CAPABILITY);
-		if ((info.st_mode & S_ISGID))
-			set (LS_SETGID);
-		if ((info.st_mode & S_ISUID))
-			set (LS_SETUID);
-	} else if (S_ISDIR (info.st_mode)) {
-		type = LS_DIRECTORY;
-		if ((info.st_mode & S_ISVTX))
-			set (LS_STICKY);
-		if ((info.st_mode & S_IWOTH))
-			set (LS_OTHER_WRITABLE);
-		if ((info.st_mode & S_ISVTX) && (info.st_mode & S_IWOTH))
-			set (LS_STICKY_OTHER_WRITABLE);
-	} else if (S_ISLNK (info.st_mode)) {
-		// TODO: LS_ORPHAN
-		type = LS_SYMLINK;
-	} else if (S_ISFIFO (info.st_mode)) {
-		type = LS_FIFO;
-	} else if (S_ISSOCK (info.st_mode)) {
-		type = LS_SOCKET;
-	} else if (S_ISBLK (info.st_mode)) {
-		type = LS_BLOCK;
-	} else if (S_ISCHR (info.st_mode)) {
-		type = LS_CHARACTER;
-	}
-
-	chtype format = 0;
-	const auto x = g.ls_colors.find (type);
-	if (x != g.ls_colors.end ())
-		format = x->second;
-
-	auto dot = filename.find_last_of ('.');
-	if (dot != string::npos && type == LS_FILE) {
-		const auto x = g.ls_exts.find (filename.substr (++dot));
-		if (x != g.ls_exts.end ())
-			format = x->second;
-	}
-
-	// TODO: show symlink target
+	// TODO: show symlink target: check st_mode/DT_*, readlink
+	auto format = ls_format (filename, info);
 	r.cols[row::FILENAME] = apply_attrs (to_wide (filename), format);
 	return r;
 }
@@ -462,6 +469,10 @@ fun reload () {
 		if (f->d_name == string ("."))
 			continue;
 
+		// TODO: check lstat() return value
+		// TODO: benchmark just readdir() vs. lstat(), also on dead mounts;
+		//   it might make sense to stat asynchronously in threads
+		//   http://lkml.iu.edu/hypermail//linux/kernel/0804.3/1616.html
 		struct stat sb = {};
 		lstat (f->d_name, &sb);
 		g.entries.push_back ({ f->d_name, sb, make_row (f->d_name, sb) });
@@ -527,6 +538,7 @@ fun handle_editor (wint_t c, bool is_char) {
 fun choose (const entry &entry) -> bool {
 	bool is_dir = S_ISDIR (entry.info.st_mode) != 0;
 	// Dive into directories and accessible symlinks to them
+	// TODO: we probably want to use a preread readlink value
 	if (S_ISLNK (entry.info.st_mode)) {
 		char buf[PATH_MAX];
 		struct stat sb = {};
