@@ -322,13 +322,9 @@ static struct {
 fun make_row (const string &filename, const struct stat &info) -> row {
 	row r;
 	auto mode = decode_mode (info.st_mode);
-	if (auto acl = acl_get_file (filename.c_str (), ACL_TYPE_ACCESS)) {
-		mode_t m;
-		// This is a Linux-only extension
-		if (!acl_equiv_mode (acl, &m) && (m ^ info.st_mode) & 0777)
-			mode += L"+";
-		acl_free (acl);
-	}
+	// This is a Linux-only extension
+	if (acl_extended_file_nofollow (filename.c_str ()) > 0)
+		mode += L"+";
 	r.cols[row::MODES] = apply_attrs (mode, 0);
 
 	auto user = to_wstring (info.st_uid);
