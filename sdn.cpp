@@ -16,6 +16,9 @@
 // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 //
 
+// May be required for ncursesw and we generally want it all anyway
+#define _XOPEN_SOURCE_EXTENDED
+
 #include <string>
 #include <vector>
 #include <locale>
@@ -271,7 +274,7 @@ struct row {
 struct entry {
 	// TODO: how to present symlink target, stat of the target?
 	//   unique_ptr<string> target; struct stat target_info;
-	string filename; struct stat info; row row;
+	string filename; struct stat info; struct row row;
 	auto operator< (const entry &other) -> bool {
 		auto a = S_ISDIR (info.st_mode);
 		auto b = S_ISDIR (other.info.st_mode);
