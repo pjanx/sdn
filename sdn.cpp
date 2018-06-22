@@ -491,7 +491,6 @@ fun reload () {
 
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
 	g.offset = min (g.offset, int (g.entries.size ()) - 1);
-	update ();
 
 	if (g.inotify_wd != -1)
 		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
@@ -648,6 +647,10 @@ fun handle (wint_t c, bool is_char) -> bool {
 	g.cursor = max (g.cursor, 0);
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
 
+	// Decrease the offset when more items can suddenly fit
+	int pushable = visible_lines () - (int (g.entries.size ()) - g.offset);
+	g.offset -= max (pushable, 0);
+
 	// Make sure cursor is visible
 	g.offset = max (g.offset, 0);
 	g.offset = min (g.offset, int (g.entries.size ()) - 1);
@@ -791,6 +794,7 @@ int main (int argc, char *argv[]) {
 
 	load_configuration ();
 	reload ();
+	update ();
 	auto start_dir = g.cwd;
 
 	wint_t c;
