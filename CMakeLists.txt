@@ -31,7 +31,7 @@ install (FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Directory navigator")
 set (CPACK_PACKAGE_VENDOR "Premysl Janouch")
-set (CPACK_PACKAGE_CONTACT "Přemysl Janouch <p.janouch@gmail.com>")
+set (CPACK_PACKAGE_CONTACT "Přemysl Janouch <p@janouch.name>")
 set (CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set (CPACK_PACKAGE_VERSION ${version})
 set (CPACK_GENERATOR "TGZ;ZIP")
