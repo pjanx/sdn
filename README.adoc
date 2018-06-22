@@ -92,11 +92,11 @@ input
 
 Contributing and Support
 ------------------------
-Use this project's GitHub to report any bugs, request features, or submit pull
-requests.  If you want to discuss this project, or maybe just hang out with
-the developer, feel free to join me at irc://irc.janouch.name, channel #dev.
+Use https://git.janouch.name/p/sdn to report any bugs, request features,
+or submit pull requests.  `git send-email` is tolerated.  If you want to discuss
+the project, feel free to join me at ircs://irc.janouch.name, channel #dev.
 
-Bitcoin donations: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
+Bitcoin donations are accepted at: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
 
 License
 -------
