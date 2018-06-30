@@ -90,6 +90,12 @@ cwd bold
 input
 ....
 
+Similar software
+----------------
+ * https://elvish.io/ is an entire shell with an integrated ranger-like file
+   manager on Ctrl-N (I find this confusing and resource-demanding, preferring
+   to keep closer to "orthodox file managers")
+
 Contributing and Support
 ------------------------
 Use https://git.janouch.name/p/sdn to report any bugs, request features,
