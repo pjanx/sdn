@@ -495,8 +495,9 @@ fun reload () {
 	if (g.inotify_wd != -1)
 		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
 
+	// We don't show atime, so access and open are merely spam
 	g.inotify_wd = inotify_add_watch (g.inotify_fd, buf,
-		IN_ALL_EVENTS | IN_ONLYDIR);
+		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
 }
 
 fun search (const wstring &needle) {
