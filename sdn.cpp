@@ -490,7 +490,23 @@ fun reload () {
 		//   http://lkml.iu.edu/hypermail//linux/kernel/0804.3/1616.html
 		struct stat sb = {};
 		lstat (f->d_name, &sb);
-		g.entries.push_back ({ f->d_name, sb, make_row (f->d_name, sb) });
+
+		auto row = make_row (f->d_name, sb);
+		if (S_ISLNK (sb.st_mode)) {
+			char buf[PATH_MAX] = {};
+			auto len = readlink (f->d_name, buf, sizeof buf);
+			if (len < 0 || size_t (len) >= sizeof buf) {
+				buf[0] = '?';
+				buf[1] = 0;
+			}
+
+			struct stat sbt = {};
+			lstat (buf, &sbt);
+
+			row.cols[row::FILENAME].append (apply_attrs (to_wide (" -> "), 0))
+				.append (apply_attrs (to_wide (buf), ls_format (buf, sbt)));
+		}
+		g.entries.push_back ({ f->d_name, sb, row });
 	}
 	closedir (dir);
 	sort (begin (g.entries), end (g.entries));
