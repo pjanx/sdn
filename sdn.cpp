@@ -814,8 +814,7 @@ int main (int argc, char *argv[]) {
 	}
 
 	locale::global (locale (""));
-	if (!initscr () || cbreak () == ERR || noecho () == ERR || nonl () == ERR
-	 || halfdelay (1) == ERR || keypad (stdscr, TRUE) == ERR) {
+	if (!initscr () || cbreak () == ERR || noecho () == ERR || nonl () == ERR) {
 		cerr << "cannot initialize screen" << endl;
 		return 1;
 	}
@@ -824,6 +823,14 @@ int main (int argc, char *argv[]) {
 	reload ();
 	g.start_dir = g.cwd;
 	update ();
+
+	// Invoking keypad() earlier would make ncurses flush its output buffer,
+	// which would worsen start-up flickering
+	if (halfdelay (1) == ERR || keypad (stdscr, TRUE) == ERR) {
+		endwin ();
+		cerr << "cannot initialize screen" << endl;
+		return 1;
+	}
 
 	wint_t c;
 	while (1) {
