@@ -319,6 +319,12 @@ static struct {
 
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
+
+	// Refreshed by reload():
+
+	map<uid_t, string> unames;          ///< User names by UID
+	map<gid_t, string> gnames;          ///< Group names by GID
+	struct tm now;                      ///< Current local time for display
 } g;
 
 fun ls_format (const string &filename, const struct stat &info) -> chtype {
@@ -384,15 +390,15 @@ fun make_row (const string &filename, const struct stat &info) -> row {
 		mode += L"+";
 	r.cols[row::MODES] = apply_attrs (mode, 0);
 
-	auto user = to_wstring (info.st_uid);
-	if (auto u = getpwuid (info.st_uid))
-		user = to_wide (u->pw_name);
-	r.cols[row::USER] = apply_attrs (user, 0);
+	auto usr = g.unames.find (info.st_uid);
+	r.cols[row::USER] = (usr != g.unames.end ())
+		? apply_attrs (to_wide (usr->second), 0)
+		: apply_attrs (to_wstring (info.st_uid), 0);
 
-	auto group = to_wstring (info.st_gid);
-	if (auto g = getgrgid (info.st_gid))
-		group = to_wide (g->gr_name);
-	r.cols[row::GROUP] = apply_attrs (group, 0);
+	auto grp = g.gnames.find (info.st_gid);
+	r.cols[row::GROUP] = (grp != g.unames.end ())
+		? apply_attrs (to_wide (grp->second), 0)
+		: apply_attrs (to_wstring (info.st_gid), 0);
 
 	auto size = to_wstring (info.st_size);
 	if      (info.st_size >> 40) size = to_wstring (info.st_size >> 40) + L"T";
@@ -401,13 +407,10 @@ fun make_row (const string &filename, const struct stat &info) -> row {
 	else if (info.st_size >> 10) size = to_wstring (info.st_size >> 10) + L"K";
 	r.cols[row::SIZE] = apply_attrs (size, 0);
 
-	auto now = time (NULL);
-	auto now_year = localtime (&now)->tm_year;
-
 	char buf[32] = "";
 	auto tm = localtime (&info.st_mtime);
 	strftime (buf, sizeof buf,
-		(tm->tm_year == now_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
+		(tm->tm_year == g.now.tm_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
 	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
 
 	// TODO: show symlink target: check st_mode/DT_*, readlink
@@ -463,6 +466,15 @@ fun update () {
 }
 
 fun reload () {
+	g.unames.clear();
+	while (auto *ent = getpwent ()) g.unames.emplace(ent->pw_uid, ent->pw_name);
+	endpwent();
+
+	g.gnames.clear();
+	while (auto *ent = getgrent ()) g.gnames.emplace(ent->gr_gid, ent->gr_name);
+	endgrent();
+
+	auto now = time (NULL); g.now = *localtime (&now);
 	char buf[4096]; g.cwd = getcwd (buf, sizeof buf);
 
 	auto dir = opendir (".");
