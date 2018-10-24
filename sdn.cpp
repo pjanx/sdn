@@ -298,6 +298,7 @@ static const char *g_ls_colors[] = {LS(XX)};
 
 static struct {
 	string cwd;                         ///< Current working directory
+	string start_dir;                   ///< Starting directory
 	vector<entry> entries;              ///< Current directory entries
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
@@ -537,6 +538,16 @@ fun handle_editor (wint_t c, bool is_char) {
 		beep ();
 }
 
+fun change_dir (const string& path) {
+	if (chdir (path.c_str ())) {
+		beep ();
+	} else {
+		// TODO: remember cursor going down, then restore going up
+		g.cursor = 0;
+		reload ();
+	}
+}
+
 fun choose (const entry &entry) -> bool {
 	bool is_dir = S_ISDIR (entry.info.st_mode) != 0;
 	// Dive into directories and accessible symlinks to them
@@ -553,13 +564,7 @@ fun choose (const entry &entry) -> bool {
 		g.chosen = entry.filename;
 		return false;
 	}
-	if (chdir (entry.filename.c_str ())) {
-		beep ();
-	} else {
-		// TODO: remember cursor going down, then restore going up
-		g.cursor = 0;
-		reload ();
-	}
+	change_dir (entry.filename);
 	return true;
 }
 
@@ -616,6 +621,16 @@ fun handle (wint_t c, bool is_char) -> bool {
 
 	case CTRL L'e': g.offset++; break;
 	case CTRL L'y': g.offset--; break;
+
+	case '&':
+		change_dir (g.start_dir);
+		break;
+	case '~':
+		if (const auto *home = getenv ("HOME"))
+			change_dir (home);
+		else if (const auto *pw = getpwuid (getuid ()))
+			change_dir (pw->pw_dir);
+		break;
 
 	case L't':
 	case ALT | L't':
@@ -795,8 +810,8 @@ int main (int argc, char *argv[]) {
 
 	load_configuration ();
 	reload ();
+	g.start_dir = g.cwd;
 	update ();
-	auto start_dir = g.cwd;
 
 	wint_t c;
 	while (1) {
@@ -819,7 +834,7 @@ int main (int argc, char *argv[]) {
 		cout << "local insert=" << shell_escape (full_path) << endl;
 		return 0;
 	}
-	if (g.cwd != start_dir)
+	if (g.cwd != g.start_dir)
 		cout << "local cd=" << shell_escape (g.cwd) << endl;
 	if (!g.chosen.empty ())
 		cout << "local insert=" << shell_escape (g.chosen) << endl;
