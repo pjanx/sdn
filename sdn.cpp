@@ -297,27 +297,27 @@ static const char *g_ls_colors[] = {LS(XX)};
 #undef XX
 
 static struct {
-	string cwd;                         // Current working directory
-	vector<entry> entries;              // Current directory entries
-	int offset, cursor;                 // Scroll offset and cursor position
-	bool full_view;                     // Whether to show extended information
-	int max_widths[row::COLUMNS];       // Column widths
+	string cwd;                         ///< Current working directory
+	vector<entry> entries;              ///< Current directory entries
+	int offset, cursor;                 ///< Scroll offset and cursor position
+	bool full_view;                     ///< Show extended information
+	int max_widths[row::COLUMNS];       ///< Column widths
 
-	string chosen;                      // Chosen item for the command line
-	bool chosen_full;                   // Use the full path
+	string chosen;                      ///< Chosen item for the command line
+	bool chosen_full;                   ///< Use the full path
 
-	int inotify_fd, inotify_wd = -1;    // File watch
-	bool out_of_date;                   // Entries may be out of date
+	int inotify_fd, inotify_wd = -1;    ///< File watch
+	bool out_of_date;                   ///< Entries may be out of date
 
-	wchar_t editor;                     // Prompt character for editing
-	wstring editor_line;                // Current user input
+	wchar_t editor;                     ///< Prompt character for editing
+	wstring editor_line;                ///< Current user input
 
 	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_COUNT };
 	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0};
 	const char *attr_names[AT_COUNT] = {"cursor", "bar", "cwd", "input"};
 
-	map<int, chtype> ls_colors;        // LS_COLORS decoded
-	map<string, chtype> ls_exts;       // LS_COLORS file extensions
+	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
+	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
 } g;
 
 fun ls_format (const string &filename, const struct stat &info) -> chtype {
