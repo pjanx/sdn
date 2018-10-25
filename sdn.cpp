@@ -26,6 +26,7 @@
 #include <cwchar>
 #include <climits>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 
@@ -293,6 +294,10 @@ struct entry {
 enum action { ACTIONS(XX) ACTION_COUNT };
 #undef XX
 
+#define XX(name) #name,
+static const char *g_action_names[] = {ACTIONS(XX)};
+#undef XX
+
 static map<wint_t, action> g_normal_actions = {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
 	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
@@ -315,6 +320,9 @@ static map<wint_t, action> g_input_actions = {
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
 };
+static const map<string, map<wint_t, action>*> g_binding_contexts = {
+	{"normal", &g_normal_actions}, {"input", &g_input_actions},
+};
 
 #define LS(XX) XX(NORMAL, "no") XX(FILE, "fi") XX(RESET, "rs") \
 	XX(DIRECTORY, "di") XX(SYMLINK, "ln") XX(MULTIHARDLINK, "mh") \
@@ -330,6 +338,14 @@ enum { LS(XX) LS_COUNT };
 #define XX(id, name) name,
 static const char *g_ls_colors[] = {LS(XX)};
 #undef XX
+
+struct stringcaseless {
+	bool operator () (const string &a, const string &b) const {
+		const auto &c = locale::classic();
+		return lexicographical_compare (begin (a), end (a), begin (b), end (b),
+			[&](char m, char n) { return tolower (m, c) < tolower (n, c); });
+	}
+};
 
 static struct {
 	string cwd;                         ///< Current working directory
@@ -355,6 +371,8 @@ static struct {
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
 	bool ls_symlink_as_target;          ///< ln=target in dircolors
+
+	map<string, wint_t, stringcaseless> key_names;
 
 	// Refreshed by reload():
 
@@ -834,13 +852,15 @@ fun load_ls_colors (vector<string> colors) {
 	}
 }
 
-fun load_configuration () {
-	auto config = xdg_config_find ("/" PROJECT_NAME "/look");
-	if (!config)
-		return;
-
+fun load_colors () {
 	// Bail out on dumb terminals, there's not much one can do about them
 	if (!has_colors () || start_color () == ERR || use_default_colors () == ERR)
+		return;
+	if (const char *colors = getenv ("LS_COLORS"))
+		load_ls_colors (split (colors, ":"));
+
+	auto config = xdg_config_find ("/" PROJECT_NAME "/look");
+	if (!config)
 		return;
 
 	string line;
@@ -853,9 +873,6 @@ fun load_configuration () {
 			if (name == g.attr_names[i])
 				g.attrs[i] = decode_attrs (tokens);
 	}
-
-	if (const char *colors = getenv ("LS_COLORS"))
-		load_ls_colors (split (colors, ":"));
 }
 
 fun read_key (wint_t &c) -> bool {
@@ -869,6 +886,104 @@ fun read_key (wint_t &c) -> bool {
 	if (res == KEY_CODE_YES)
 		c |= SYM;
 	return true;
+}
+
+fun parse_key (const string &key_name) -> wint_t {
+	wint_t c{};
+	auto p = key_name.c_str ();
+	if (!strncmp (p, "M-", 2)) {
+		c |= ALT;
+		p += 2;
+	}
+
+	if (!strncmp (p, "C-", 2)) {
+		p += 2;
+		if (*p < 32) {
+			cerr << "bindings: invalid combination: " << key_name << endl;
+			return WEOF;
+		}
+		c |= CTRL *p;
+		p += 1;
+	} else if (g.key_names.count (p)) {
+		c |= g.key_names.at (p);
+		p += strlen (p);
+	} else {
+		wchar_t w; mbstate_t mb {};
+		auto len = strlen (p) + 1, res = mbrtowc (&w, p, len, &mb);
+		if (res == 0) {
+			cerr << "bindings: missing key name: " << key_name << endl;
+			return WEOF;
+		}
+		if (res == size_t (-1) || res == size_t (-2)) {
+			cerr << "bindings: invalid encoding: " << key_name << endl;
+			return WEOF;
+		}
+		c |= w;
+		p += res;
+	}
+	if (*p) {
+		cerr << "key name has unparsable trailing part: " << key_name << endl;
+		return WEOF;
+	}
+	return c;
+}
+
+fun load_bindings () {
+	g.key_names["space"] = ' ';
+	for (int kc = KEY_MIN; kc < KEY_MAX; kc++) {
+		const char *name = keyname (kc);
+		if (!name)
+			continue;
+		if (!strncmp (name, "KEY_", 4))
+			name += 4;
+		string filtered;
+		for (; *name; name++) {
+			if (*name != '(' && *name != ')')
+				filtered += *name;
+		}
+		g.key_names[filtered] = kc;
+	}
+
+	auto config = xdg_config_find ("/" PROJECT_NAME "/bindings");
+	if (!config)
+		return;
+
+	// Stringization in the preprocessor is a bit limited, we want lisp-case
+	map<string, action> actions;
+	int a;
+	for (auto p : g_action_names) {
+		string name;
+		for (; *p; p++)
+			name += *p == '_' ? '-' : *p + 'a' - 'A';
+		actions[name] = action (a++);
+	}
+
+	string line;
+	while (getline (*config, line)) {
+		auto tokens = split (line, " ");
+		if (tokens.empty () || line.front () == '#')
+			continue;
+		if (tokens.size () < 3) {
+			cerr << "bindings: expected: context binding action";
+			continue;
+		}
+
+		auto context = tokens[0], key_name = tokens[1], action = tokens[2];
+		auto m = g_binding_contexts.find (context);
+		if (m == g_binding_contexts.end ()) {
+			cerr << "bindings: invalid context: " << context << endl;
+			continue;
+		}
+		wint_t c = parse_key (key_name);
+		if (c == WEOF)
+			continue;
+		auto i = actions.find (action);
+		if (i == actions.end ()) {
+			cerr << "bindings: invalid action: " << action << endl;
+			continue;
+		}
+		(*m->second)[c] = i->second;
+	}
 }
 
 int main (int argc, char *argv[]) {
@@ -892,12 +1007,14 @@ int main (int argc, char *argv[]) {
 	}
 
 	locale::global (locale (""));
+	load_bindings ();
+
 	if (!initscr () || cbreak () == ERR || noecho () == ERR || nonl () == ERR) {
 		cerr << "cannot initialize screen" << endl;
 		return 1;
 	}
 
-	load_configuration ();
+	load_colors ();
 	reload ();
 	g.start_dir = g.cwd;
 	update ();
@@ -906,7 +1023,7 @@ int main (int argc, char *argv[]) {
 	// which would worsen start-up flickering
 	if (halfdelay (1) == ERR || keypad (stdscr, TRUE) == ERR) {
 		endwin ();
-		cerr << "cannot initialize screen" << endl;
+		cerr << "cannot configure input" << endl;
 		return 1;
 	}
 
