@@ -264,6 +264,8 @@ fun decode_attrs (const vector<string> &attrs) -> chtype {
 
 // --- Application -------------------------------------------------------------
 
+enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
+#define KEY(name) (SYM | KEY_ ## name)
 #define CTRL 31 &
 
 struct entry {
@@ -278,6 +280,40 @@ struct entry {
 		auto b = S_ISDIR (other.info.st_mode);
 		return (a && !b) || (a == b && filename < other.filename);
 	}
+};
+
+#define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(QUIT) \
+	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
+	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(GO_START) XX(GO_HOME) \
+	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
+	XX(TOGGLE_FULL) XX(REDRAW) XX(RELOAD) \
+	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE)
+
+#define XX(name) ACTION_ ## name,
+enum action { ACTIONS(XX) ACTION_COUNT };
+#undef XX
+
+static map<wint_t, action> g_normal_actions = {
+	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
+	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
+	// M-o ought to be the same shortcut the navigator is launched with
+	{ALT | 'o', ACTION_QUIT}, {'q', ACTION_QUIT},
+	{'k', ACTION_UP}, {CTRL 'p', ACTION_UP}, {KEY (UP), ACTION_UP},
+	{'j', ACTION_DOWN}, {CTRL 'n', ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
+	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
+	{'G', ACTION_BOTTOM}, {ALT | '>', ACTION_BOTTOM}, {KEY(END), ACTION_BOTTOM},
+	{KEY (PPAGE), ACTION_PAGE_PREVIOUS}, {KEY (NPAGE), ACTION_PAGE_NEXT},
+	{CTRL 'y', ACTION_SCROLL_UP}, {CTRL 'e', ACTION_SCROLL_DOWN},
+	{'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
+	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
+	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
+	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
+	{CTRL 'L', ACTION_REDRAW}, {'r', ACTION_RELOAD},
+};
+static map<wint_t, action> g_input_actions = {
+	{27, ACTION_INPUT_ABORT}, {CTRL 'g', ACTION_INPUT_ABORT},
+	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
+	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
 };
 
 #define LS(XX) XX(NORMAL, "no") XX(FILE, "fi") XX(RESET, "rs") \
@@ -567,30 +603,6 @@ fun search (const wstring &needle) {
 	g.cursor = best;
 }
 
-fun handle_editor (wint_t c, bool is_char) {
-	if (c == 27 || c == (CTRL L'g')) {
-		g.editor_line.clear ();
-		g.editor = 0;
-	} else if (c == L'\r' || (!is_char && c == KEY_ENTER)) {
-		if (g.editor == L'e') {
-			auto mb = to_mb (g.editor_line);
-			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
-			reload ();
-		}
-		g.editor_line.clear ();
-		g.editor = 0;
-	} else if (is_char) {
-		g.editor_line += c;
-		if (g.editor == L'/'
-		 || g.editor == L's')
-			search (g.editor_line);
-	} else if (c == KEY_BACKSPACE) {
-		if (!g.editor_line.empty ())
-			g.editor_line.erase (g.editor_line.length () - 1);
-	} else
-		beep ();
-}
-
 fun change_dir (const string& path) {
 	if (chdir (path.c_str ())) {
 		beep ();
@@ -612,99 +624,118 @@ fun choose (const entry &entry) -> bool {
 	return true;
 }
 
-fun handle (wint_t c, bool is_char) -> bool {
+fun handle_editor (wint_t c) {
+	// FIXME: do not check editor actions by the prompt letter
+	auto i = g_input_actions.find (c);
+	switch (i == g_input_actions.end () ? ACTION_NONE : i->second) {
+	case ACTION_INPUT_ABORT:
+		g.editor_line.clear ();
+		g.editor = 0;
+		break;
+	case ACTION_INPUT_CONFIRM:
+		if (g.editor == L'e') {
+			auto mb = to_mb (g.editor_line);
+			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
+			reload ();
+		}
+		g.editor_line.clear ();
+		g.editor = 0;
+		break;
+	case ACTION_INPUT_B_DELETE:
+		if (!g.editor_line.empty ())
+			g.editor_line.erase (g.editor_line.length () - 1);
+		break;
+	default:
+		if (c & (ALT | SYM)) {
+			beep ();
+		} else {
+			g.editor_line += c;
+			if (g.editor == L'/'
+			 || g.editor == L's')
+				search (g.editor_line);
+		}
+	}
+}
+
+fun handle (wint_t c) -> bool {
 	// If an editor is active, let it handle the key instead and eat it
 	if (g.editor) {
-		handle_editor (c, is_char);
+		handle_editor (c);
 		c = WEOF;
 	}
 
-	// Translate the Alt key into a bit outside the range of Unicode
-	enum { ALT = 1 << 24, SYM = 1 << 25 };
-	if (c == 27) {
-		if (get_wch (&c) == ERR) {
-			beep ();
-			return true;
-		}
-		c |= ALT;
-	}
-	if (!is_char)
-		c |= SYM;
-
 	const auto &current = g.entries[g.cursor];
-	switch (c) {
-	case ALT | L'\r':
-	case ALT | SYM | KEY_ENTER:
+	auto i = g_normal_actions.find (c);
+	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
+	case ACTION_CHOOSE_FULL:
 		g.chosen_full = true;
 		g.chosen = current.filename;
 		return false;
-	case L'\r':
-	case SYM | KEY_ENTER:
+	case ACTION_CHOOSE:
 		if (choose (current))
 			break;
 		return false;
-
-	// M-o ought to be the same shortcut the navigator is launched with
-	case ALT | L'o':
-	case L'q':
+	case ACTION_QUIT:
 		return false;
 
-	case L'k': case CTRL L'p': case SYM | KEY_UP:
+	case ACTION_UP:
 		g.cursor--;
 		break;
-	case L'j': case CTRL L'n': case SYM | KEY_DOWN:
+	case ACTION_DOWN:
 		g.cursor++;
 		break;
-	case L'g': case ALT | L'<': case SYM | KEY_HOME:
+	case ACTION_TOP:
 		g.cursor = 0;
 		break;
-	case L'G': case ALT | L'>': case SYM | KEY_END:
+	case ACTION_BOTTOM:
 		g.cursor = int (g.entries.size ()) - 1;
 		break;
 
-	case SYM | KEY_PPAGE: g.cursor -= LINES; break;
-	case SYM | KEY_NPAGE: g.cursor += LINES; break;
+	case ACTION_PAGE_PREVIOUS:
+		g.cursor -= LINES;
+		break;
+	case ACTION_PAGE_NEXT:
+		g.cursor += LINES;
+		break;
+	case ACTION_SCROLL_DOWN:
+		g.offset++;
+		break;
+	case ACTION_SCROLL_UP:
+		g.offset--;
+		break;
 
-	case CTRL L'e': g.offset++; break;
-	case CTRL L'y': g.offset--; break;
-
-	case '&':
+	case ACTION_GO_START:
 		change_dir (g.start_dir);
 		break;
-	case '~':
+	case ACTION_GO_HOME:
 		if (const auto *home = getenv ("HOME"))
 			change_dir (home);
 		else if (const auto *pw = getpwuid (getuid ()))
 			change_dir (pw->pw_dir);
 		break;
 
-	case L't':
-	case ALT | L't':
-		g.full_view = !g.full_view;
-		break;
-
-	case ALT | L'e':
-		g.editor_line = to_wide (current.filename);
-		// Fall-through
-	case L'e':
-		g.editor = c & ~ALT;
-		break;
-	case L'/':
-	case L's':
+	case ACTION_SEARCH:
 		g.editor = c;
 		break;
+	case ACTION_RENAME_PREFILL:
+		g.editor_line = to_wide (current.filename);
+		// Fall-through
+	case ACTION_RENAME:
+		g.editor = c & ~ALT;
+		break;
 
-	case CTRL L'L':
+	case ACTION_TOGGLE_FULL:
+		g.full_view = !g.full_view;
+		break;
+	case ACTION_REDRAW:
 		clear ();
 		break;
-	case L'r':
+	case ACTION_RELOAD:
 		reload ();
 		break;
-	case SYM | KEY_RESIZE:
-	case WEOF:
-		break;
 	default:
-		beep ();
+		if (c != KEY (RESIZE) && c != WEOF)
+			beep ();
 	}
 	g.cursor = max (g.cursor, 0);
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
@@ -827,6 +858,19 @@ fun load_configuration () {
 		load_ls_colors (split (colors, ":"));
 }
 
+fun read_key (wint_t &c) -> bool {
+	int res = get_wch (&c);
+	if (res == ERR)
+		return false;
+
+	wint_t metafied{};
+	if (c == 27 && (res = get_wch (&metafied)) != ERR)
+		c = ALT | metafied;
+	if (res == KEY_CODE_YES)
+		c |= SYM;
+	return true;
+}
+
 int main (int argc, char *argv[]) {
 	(void) argc;
 	(void) argv;
@@ -867,12 +911,8 @@ int main (int argc, char *argv[]) {
 	}
 
 	wint_t c;
-	while (1) {
+	while (!read_key (c) || handle (c))
 		inotify_check ();
-		int res = get_wch (&c);
-		if (res != ERR && !handle (c, res == OK))
-			break;
-	}
 	endwin ();
 
 	// Presumably it is going to end up as an argument, so quote it
