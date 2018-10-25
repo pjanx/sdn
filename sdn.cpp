@@ -119,7 +119,8 @@ fun decode_type (mode_t m) -> wchar_t {
 	if (S_ISDIR  (m)) return L'd'; if (S_ISBLK  (m)) return L'b';
 	if (S_ISCHR  (m)) return L'c'; if (S_ISLNK  (m)) return L'l';
 	if (S_ISFIFO (m)) return L'p'; if (S_ISSOCK (m)) return L's';
-	return L'-';
+	if (S_ISREG  (m)) return L'-';
+	return L'?';
 }
 
 /// Return the modes of a file in the usual stat/ls format
@@ -265,15 +266,13 @@ fun decode_attrs (const vector<string> &attrs) -> chtype {
 
 #define CTRL 31 &
 
-struct row {
+struct entry {
+	string filename, target_path;
+	struct stat info = {}, target_info = {};
+
 	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
 	ncstring cols[COLUMNS];
-};
 
-struct entry {
-	// TODO: how to present symlink target, stat of the target?
-	//   unique_ptr<string> target; struct stat target_info;
-	string filename; struct stat info; struct row row;
 	auto operator< (const entry &other) -> bool {
 		auto a = S_ISDIR (info.st_mode);
 		auto b = S_ISDIR (other.info.st_mode);
@@ -302,7 +301,7 @@ static struct {
 	vector<entry> entries;              ///< Current directory entries
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
-	int max_widths[row::COLUMNS];       ///< Column widths
+	int max_widths[entry::COLUMNS];     ///< Column widths
 
 	string chosen;                      ///< Chosen item for the command line
 	bool chosen_full;                   ///< Use the full path
@@ -331,7 +330,6 @@ fun ls_format (const string &filename, const struct stat &info) -> chtype {
 	int type = LS_ORPHAN;
 	auto set = [&](int t) { if (g.ls_colors.count (t)) type = t; };
 	// TODO: LS_MISSING if available and this is a missing symlink target
-	// TODO: go by readdir() information when stat() isn't available yet
 	if (S_ISREG (info.st_mode)) {
 		type = LS_FILE;
 		if (info.st_nlink > 1)
@@ -381,22 +379,51 @@ fun ls_format (const string &filename, const struct stat &info) -> chtype {
 	return format;
 }
 
-// XXX: this will probably have to be changed to make_entry and run lstat itself
-fun make_row (const string &filename, const struct stat &info) -> row {
-	row r;
+fun make_entry (const struct dirent *f) -> entry {
+	entry e;
+	e.filename = f->d_name;
+	e.info.st_mode = DTTOIF (f->d_type);
+	auto& info = e.info;
+
+	// TODO: benchmark just readdir() vs. lstat(), also on dead mounts;
+	//   it might make sense to stat asynchronously in threads
+	//   http://lkml.iu.edu/hypermail//linux/kernel/0804.3/1616.html
+	if (lstat (f->d_name, &info)) {
+		e.cols[entry::MODES] = apply_attrs ({ decode_type (info.st_mode),
+			L'?', L'?', L'?', L'?', L'?', L'?', L'?', L'?', L'?' }, 0);
+
+		e.cols[entry::USER] = e.cols[entry::GROUP] =
+		e.cols[entry::SIZE] = e.cols[entry::MTIME] = apply_attrs (L"?", 0);
+
+		auto format = ls_format (e.filename, info);
+		e.cols[entry::FILENAME] = apply_attrs (to_wide (e.filename), format);
+		return e;
+	}
+
+	if (S_ISLNK (info.st_mode)) {
+		char buf[PATH_MAX] = {};
+		auto len = readlink (f->d_name, buf, sizeof buf);
+		if (len < 0 || size_t (len) >= sizeof buf) {
+			e.target_path = "?";
+		} else {
+			e.target_path = buf;
+			(void) lstat (buf, &e.target_info);
+		}
+	}
+
 	auto mode = decode_mode (info.st_mode);
 	// This is a Linux-only extension
-	if (acl_extended_file_nofollow (filename.c_str ()) > 0)
+	if (acl_extended_file_nofollow (f->d_name) > 0)
 		mode += L"+";
-	r.cols[row::MODES] = apply_attrs (mode, 0);
+	e.cols[entry::MODES] = apply_attrs (mode, 0);
 
 	auto usr = g.unames.find (info.st_uid);
-	r.cols[row::USER] = (usr != g.unames.end ())
+	e.cols[entry::USER] = (usr != g.unames.end ())
 		? apply_attrs (to_wide (usr->second), 0)
 		: apply_attrs (to_wstring (info.st_uid), 0);
 
 	auto grp = g.gnames.find (info.st_gid);
-	r.cols[row::GROUP] = (grp != g.unames.end ())
+	e.cols[entry::GROUP] = (grp != g.unames.end ())
 		? apply_attrs (to_wide (grp->second), 0)
 		: apply_attrs (to_wstring (info.st_gid), 0);
 
@@ -405,25 +432,29 @@ fun make_row (const string &filename, const struct stat &info) -> row {
 	else if (info.st_size >> 30) size = to_wstring (info.st_size >> 30) + L"G";
 	else if (info.st_size >> 20) size = to_wstring (info.st_size >> 20) + L"M";
 	else if (info.st_size >> 10) size = to_wstring (info.st_size >> 10) + L"K";
-	r.cols[row::SIZE] = apply_attrs (size, 0);
+	e.cols[entry::SIZE] = apply_attrs (size, 0);
 
 	char buf[32] = "";
 	auto tm = localtime (&info.st_mtime);
 	strftime (buf, sizeof buf,
 		(tm->tm_year == g.now.tm_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
-	r.cols[row::MTIME] = apply_attrs (to_wide (buf), 0);
+	e.cols[entry::MTIME] = apply_attrs (to_wide (buf), 0);
 
-	// TODO: show symlink target: check st_mode/DT_*, readlink
-	auto format = ls_format (filename, info);
-	r.cols[row::FILENAME] = apply_attrs (to_wide (filename), format);
-	return r;
+	auto &fn = e.cols[entry::FILENAME] =
+		apply_attrs (to_wide (e.filename), ls_format (e.filename, info));
+	if (!e.target_path.empty ()) {
+		fn.append (apply_attrs (to_wide (" -> "), 0));
+		fn.append (apply_attrs (to_wide (e.target_path),
+			ls_format (e.target_path, e.target_info)));
+	}
+	return e;
 }
 
 fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
 fun update () {
-	int start_column = g.full_view ? 0 : row::FILENAME;
-	static int alignment[row::COLUMNS] = { -1, -1, -1, 1, -1, -1 };
+	int start_column = g.full_view ? 0 : entry::FILENAME;
+	static int alignment[entry::COLUMNS] = { -1, -1, -1, 1, -1, -1 };
 	erase ();
 
 	int available = visible_lines ();
@@ -435,8 +466,8 @@ fun update () {
 		move (available - used + i, 0);
 
 		auto used = 0;
-		for (int col = start_column; col < row::COLUMNS; col++) {
-			const auto &field = g.entries[index].row.cols[col];
+		for (int col = start_column; col < entry::COLUMNS; col++) {
+			const auto &field = g.entries[index].cols[col];
 			auto aligned = align (field, alignment[col] * g.max_widths[col]);
 			if (selected)
 				for_each (begin (aligned), end (aligned), decolor);
@@ -481,41 +512,17 @@ fun reload () {
 	g.entries.clear ();
 	while (auto f = readdir (dir)) {
 		// Two dots are for navigation but this ain't as useful
-		if (f->d_name == string ("."))
-			continue;
-
-		// TODO: check lstat() return value
-		// TODO: benchmark just readdir() vs. lstat(), also on dead mounts;
-		//   it might make sense to stat asynchronously in threads
-		//   http://lkml.iu.edu/hypermail//linux/kernel/0804.3/1616.html
-		struct stat sb = {};
-		lstat (f->d_name, &sb);
-
-		auto row = make_row (f->d_name, sb);
-		if (S_ISLNK (sb.st_mode)) {
-			char buf[PATH_MAX] = {};
-			auto len = readlink (f->d_name, buf, sizeof buf);
-			if (len < 0 || size_t (len) >= sizeof buf) {
-				buf[0] = '?';
-				buf[1] = 0;
-			}
-
-			struct stat sbt = {};
-			lstat (buf, &sbt);
-
-			row.cols[row::FILENAME].append (apply_attrs (to_wide (" -> "), 0))
-				.append (apply_attrs (to_wide (buf), ls_format (buf, sbt)));
-		}
-		g.entries.push_back ({ f->d_name, sb, row });
+		if (f->d_name != string ("."))
+			g.entries.push_back (make_entry (f));
 	}
 	closedir (dir);
 	sort (begin (g.entries), end (g.entries));
 	g.out_of_date = false;
 
-	for (int col = 0; col < row::COLUMNS; col++) {
+	for (int col = 0; col < entry::COLUMNS; col++) {
 		auto &longest = g.max_widths[col] = 0;
 		for (const auto &entry : g.entries)
-			longest = max (longest, compute_width (entry.row.cols[col]));
+			longest = max (longest, compute_width (entry.cols[col]));
 	}
 
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
@@ -577,18 +584,9 @@ fun change_dir (const string& path) {
 }
 
 fun choose (const entry &entry) -> bool {
-	bool is_dir = S_ISDIR (entry.info.st_mode) != 0;
 	// Dive into directories and accessible symlinks to them
-	// TODO: we probably want to use a preread readlink value
-	if (S_ISLNK (entry.info.st_mode)) {
-		char buf[PATH_MAX];
-		struct stat sb = {};
-		auto len = readlink (entry.filename.c_str (), buf, sizeof buf);
-		is_dir = len > 0 && size_t (len) < sizeof buf
-			&& !stat (entry.filename.c_str (), &sb)
-			&& S_ISDIR (sb.st_mode) != 0;
-	}
-	if (!is_dir) {
+	if (!S_ISDIR (entry.info.st_mode)
+	 && !S_ISDIR (entry.target_info.st_mode)) {
 		g.chosen = entry.filename;
 		return false;
 	}
