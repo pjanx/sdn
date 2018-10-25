@@ -318,6 +318,7 @@ static struct {
 
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
+	bool ls_symlink_as_target;          ///< ln=target in dircolors
 
 	// Refreshed by reload():
 
@@ -326,17 +327,34 @@ static struct {
 	struct tm now;                      ///< Current local time for display
 } g;
 
-fun ls_format (const string &filename, const struct stat &info) -> chtype {
+// The coloring logic has been more or less exactly copied from GNU ls,
+// simplified and rewritten to reflect local implementation specifics
+fun ls_is_colored (int type) -> bool {
+	auto i = g.ls_colors.find (type);
+	return i != g.ls_colors.end () && i->second != 0;
+}
+
+fun ls_format (const entry &e, bool for_target) -> chtype {
 	int type = LS_ORPHAN;
-	auto set = [&](int t) { if (g.ls_colors.count (t)) type = t; };
-	// TODO: LS_MISSING if available and this is a missing symlink target
-	if (S_ISREG (info.st_mode)) {
+	auto set = [&](int t) { if (ls_is_colored (t)) type = t; };
+
+	const auto &name = for_target
+		? e.target_path : e.filename;
+	const auto &info =
+		(for_target || (g.ls_symlink_as_target && e.target_info.st_mode))
+		? e.target_info : e.info;
+
+	if (for_target && info.st_mode == 0) {
+		// This differs from GNU ls: we use ORPHAN when MISSING is not set,
+		// but GNU ls colors by dirent::d_type
+		set (LS_MISSING);
+	} else if (S_ISREG (info.st_mode)) {
 		type = LS_FILE;
 		if (info.st_nlink > 1)
 			set (LS_MULTIHARDLINK);
 		if ((info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)))
 			set (LS_EXECUTABLE);
-		if (lgetxattr (filename.c_str (), "security.capability", NULL, 0) >= 0)
+		if (lgetxattr (name.c_str (), "security.capability", NULL, 0) >= 0)
 			set (LS_CAPABILITY);
 		if ((info.st_mode & S_ISGID))
 			set (LS_SETGID);
@@ -351,10 +369,10 @@ fun ls_format (const string &filename, const struct stat &info) -> chtype {
 		if ((info.st_mode & S_ISVTX) && (info.st_mode & S_IWOTH))
 			set (LS_STICKY_OTHER_WRITABLE);
 	} else if (S_ISLNK (info.st_mode)) {
-		// TODO: LS_ORPHAN when symlink target is missing and either
-		//   a/ "li" is "target", or
-		//   b/ LS_ORPHAN is available
 		type = LS_SYMLINK;
+		if (!e.target_info.st_mode
+		 && (ls_is_colored (LS_ORPHAN) || g.ls_symlink_as_target))
+			type = LS_ORPHAN;
 	} else if (S_ISFIFO (info.st_mode)) {
 		type = LS_FIFO;
 	} else if (S_ISSOCK (info.st_mode)) {
@@ -370,9 +388,9 @@ fun ls_format (const string &filename, const struct stat &info) -> chtype {
 	if (x != g.ls_colors.end ())
 		format = x->second;
 
-	auto dot = filename.find_last_of ('.');
+	auto dot = name.find_last_of ('.');
 	if (dot != string::npos && type == LS_FILE) {
-		const auto x = g.ls_exts.find (filename.substr (++dot));
+		const auto x = g.ls_exts.find (name.substr (++dot));
 		if (x != g.ls_exts.end ())
 			format = x->second;
 	}
@@ -395,8 +413,8 @@ fun make_entry (const struct dirent *f) -> entry {
 		e.cols[entry::USER] = e.cols[entry::GROUP] =
 		e.cols[entry::SIZE] = e.cols[entry::MTIME] = apply_attrs (L"?", 0);
 
-		auto format = ls_format (e.filename, info);
-		e.cols[entry::FILENAME] = apply_attrs (to_wide (e.filename), format);
+		e.cols[entry::FILENAME] =
+			apply_attrs (to_wide (e.filename), ls_format (e, false));
 		return e;
 	}
 
@@ -407,7 +425,8 @@ fun make_entry (const struct dirent *f) -> entry {
 			e.target_path = "?";
 		} else {
 			e.target_path = buf;
-			(void) lstat (buf, &e.target_info);
+			// If a symlink links to another symlink, we follow all the way
+			(void) stat (buf, &e.target_info);
 		}
 	}
 
@@ -441,11 +460,10 @@ fun make_entry (const struct dirent *f) -> entry {
 	e.cols[entry::MTIME] = apply_attrs (to_wide (buf), 0);
 
 	auto &fn = e.cols[entry::FILENAME] =
-		apply_attrs (to_wide (e.filename), ls_format (e.filename, info));
+		apply_attrs (to_wide (e.filename), ls_format (e, false));
 	if (!e.target_path.empty ()) {
 		fn.append (apply_attrs (to_wide (" -> "), 0));
-		fn.append (apply_attrs (to_wide (e.target_path),
-			ls_format (e.target_path, e.target_info)));
+		fn.append (apply_attrs (to_wide (e.target_path), ls_format (e, true)));
 	}
 	return e;
 }
@@ -767,11 +785,11 @@ fun load_ls_colors (vector<string> colors) {
 		auto equal = pair.find ('=');
 		if (equal == string::npos)
 			continue;
-		attrs[pair.substr (0, equal)] =
-			decode_ansi_sgr (split (pair.substr (equal + 1), ";"));
+		auto key = pair.substr (0, equal), value = pair.substr (equal + 1);
+		if (key != g_ls_colors[LS_SYMLINK]
+		 || !(g.ls_symlink_as_target = value == "target"))
+			attrs[key] = decode_ansi_sgr (split (value, ";"));
 	}
-
-	// `LINK target` i.e. `ln=target` is not supported now
 	for (int i = 0; i < LS_COUNT; i++) {
 		auto m = attrs.find (g_ls_colors[i]);
 		if (m != attrs.end ())
