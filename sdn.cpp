@@ -620,7 +620,7 @@ fun handle (wint_t c, bool is_char) -> bool {
 	}
 
 	// Translate the Alt key into a bit outside the range of Unicode
-	enum { ALT = 1 << 24 };
+	enum { ALT = 1 << 24, SYM = 1 << 25 };
 	if (c == 27) {
 		if (get_wch (&c) == ERR) {
 			beep ();
@@ -628,16 +628,18 @@ fun handle (wint_t c, bool is_char) -> bool {
 		}
 		c |= ALT;
 	}
+	if (!is_char)
+		c |= SYM;
 
 	const auto &current = g.entries[g.cursor];
 	switch (c) {
 	case ALT | L'\r':
-	case ALT | KEY_ENTER:
+	case ALT | SYM | KEY_ENTER:
 		g.chosen_full = true;
 		g.chosen = current.filename;
 		return false;
 	case L'\r':
-	case KEY_ENTER:
+	case SYM | KEY_ENTER:
 		if (choose (current))
 			break;
 		return false;
@@ -647,21 +649,21 @@ fun handle (wint_t c, bool is_char) -> bool {
 	case L'q':
 		return false;
 
-	case L'k': case CTRL L'p': case KEY_UP:
+	case L'k': case CTRL L'p': case SYM | KEY_UP:
 		g.cursor--;
 		break;
-	case L'j': case CTRL L'n': case KEY_DOWN:
+	case L'j': case CTRL L'n': case SYM | KEY_DOWN:
 		g.cursor++;
 		break;
-	case L'g': case ALT | L'<': case KEY_HOME:
+	case L'g': case ALT | L'<': case SYM | KEY_HOME:
 		g.cursor = 0;
 		break;
-	case L'G': case ALT | L'>': case KEY_END:
+	case L'G': case ALT | L'>': case SYM | KEY_END:
 		g.cursor = int (g.entries.size ()) - 1;
 		break;
 
-	case KEY_PPAGE: g.cursor -= LINES; break;
-	case KEY_NPAGE: g.cursor += LINES; break;
+	case SYM | KEY_PPAGE: g.cursor -= LINES; break;
+	case SYM | KEY_NPAGE: g.cursor += LINES; break;
 
 	case CTRL L'e': g.offset++; break;
 	case CTRL L'y': g.offset--; break;
@@ -698,7 +700,7 @@ fun handle (wint_t c, bool is_char) -> bool {
 	case L'r':
 		reload ();
 		break;
-	case KEY_RESIZE:
+	case SYM | KEY_RESIZE:
 	case WEOF:
 		break;
 	default:
