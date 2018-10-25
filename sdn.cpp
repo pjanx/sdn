@@ -454,7 +454,7 @@ fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
 fun update () {
 	int start_column = g.full_view ? 0 : entry::FILENAME;
-	static int alignment[entry::COLUMNS] = { -1, -1, -1, 1, -1, -1 };
+	static int alignment[entry::COLUMNS] = { -1, -1, -1, 1, 1, -1 };
 	erase ();
 
 	int available = visible_lines ();
