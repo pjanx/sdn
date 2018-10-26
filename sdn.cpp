@@ -895,7 +895,6 @@ fun parse_key (const string &key_name) -> wint_t {
 		c |= ALT;
 		p += 2;
 	}
-
 	if (!strncmp (p, "C-", 2)) {
 		p += 2;
 		if (*p < 32) {
@@ -905,8 +904,7 @@ fun parse_key (const string &key_name) -> wint_t {
 		c |= CTRL *p;
 		p += 1;
 	} else if (g.key_names.count (p)) {
-		c |= g.key_names.at (p);
-		p += strlen (p);
+		return c | g.key_names.at (p);
 	} else {
 		wchar_t w; mbstate_t mb {};
 		auto len = strlen (p) + 1, res = mbrtowc (&w, p, len, &mb);
