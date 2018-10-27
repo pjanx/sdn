@@ -106,7 +106,19 @@ fun split (const string &s, const string &sep) -> vector<string> {
 	vector<string> result; split (s, sep, result); return result;
 }
 
+fun needs_shell_quoting (const string &v) -> bool {
+	// IEEE Std 1003.1 sh + the exclamation mark because of csh/bash
+	// history expansion, implicitly also the NUL character
+	for (auto c : v)
+		if (strchr ("|&;<>()$`\\\"' \t\n" "*?[#˜=%" "!", c))
+			return true;
+	return false;
+}
+
 fun shell_escape (const string &v) -> string {
+	if (!needs_shell_quoting (v))
+		return v;
+
 	string result;
 	for (auto c : v)
 		if (c == '\'')
