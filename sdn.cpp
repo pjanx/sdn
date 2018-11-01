@@ -140,7 +140,7 @@ fun decode_type (mode_t m) -> wchar_t {
 
 /// Return the modes of a file in the usual stat/ls format
 fun decode_mode (mode_t m) -> wstring {
-	return { decode_type (m),
+	return {decode_type (m),
 		L"r-"[!(m & S_IRUSR)],
 		L"w-"[!(m & S_IWUSR)],
 		((m & S_ISUID) ? L"sS" : L"x-")[!(m & S_IXUSR)],
@@ -149,8 +149,7 @@ fun decode_mode (mode_t m) -> wstring {
 		((m & S_ISGID) ? L"sS" : L"x-")[!(m & S_IXGRP)],
 		L"r-"[!(m & S_IROTH)],
 		L"w-"[!(m & S_IWOTH)],
-		((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)],
-	};
+		((m & S_ISVTX) ? L"tT" : L"x-")[!(m & S_IXOTH)]};
 }
 
 template<class T> fun shift (vector<T> &v) -> T {
@@ -320,7 +319,7 @@ enum action { ACTIONS(XX) ACTION_COUNT };
 static const char *g_action_names[] = {ACTIONS(XX)};
 #undef XX
 
-static map<wint_t, action> g_normal_actions = {
+static map<wint_t, action> g_normal_actions {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
 	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE}, {'h', ACTION_HELP},
 	// M-o ought to be the same shortcut the navigator is launched with
@@ -337,12 +336,12 @@ static map<wint_t, action> g_normal_actions = {
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
 	{CTRL 'L', ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
-static map<wint_t, action> g_input_actions = {
+static map<wint_t, action> g_input_actions {
 	{27, ACTION_INPUT_ABORT}, {CTRL 'g', ACTION_INPUT_ABORT},
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
 };
-static const map<string, map<wint_t, action>*> g_binding_contexts = {
+static const map<string, map<wint_t, action>*> g_binding_contexts {
 	{"normal", &g_normal_actions}, {"input", &g_input_actions},
 };
 
