@@ -130,6 +130,51 @@ fun shell_escape (const string &v) -> string {
 	return "'" + result + "'";
 }
 
+fun parse_line (istream &is, vector<string> &out) -> bool {
+	enum {STA, DEF, COM, ESC, WOR, QUO, STATES};
+	enum {TAKE = 1 << 3, PUSH = 1 << 4, STOP = 1 << 5, ERROR = 1 << 6};
+	enum {TWOR = TAKE | WOR};
+
+	// We never transition back to the start state, so it can stay as a noop
+	static char table[STATES][7] = {
+	// state   EOF          SP, TAB     '     #     \     LF           default
+	/* STA */ {ERROR,       DEF,        QUO,  COM,  ESC,  STOP,        TWOR},
+	/* DEF */ {STOP,        0,          QUO,  COM,  ESC,  STOP,        TWOR},
+	/* COM */ {STOP,        0,          0,    0,    0,    STOP,        0},
+	/* ESC */ {ERROR,       TWOR,       TWOR, TWOR, TWOR, TWOR,        TWOR},
+	/* WOR */ {STOP | PUSH, DEF | PUSH, QUO,  TAKE, ESC,  STOP | PUSH, TAKE},
+	/* QUO */ {ERROR,       TAKE,       WOR,  TAKE, TAKE, TAKE,        TAKE},
+	};
+
+	out.clear (); string token; int state = STA;
+	constexpr auto eof = istream::traits_type::eof ();
+	while (1) {
+		int ch = is.get (), edge = 0;
+		switch (ch) {
+		case eof:  edge = table[state][0]; break;
+		case '\t':
+		case ' ':  edge = table[state][1]; break;
+		case '\'': edge = table[state][2]; break;
+		case '#':  edge = table[state][3]; break;
+		case '\\': edge = table[state][4]; break;
+		case '\n': edge = table[state][5]; break;
+		default:   edge = table[state][6]; break;
+		}
+		if (edge & TAKE)
+			token += ch;
+		if (edge & PUSH) {
+			out.push_back (token);
+			token.clear ();
+		}
+		if (edge & STOP)
+			return true;
+		if (edge & ERROR)
+			return false;
+		if (edge &= 7)
+			state = edge;
+	}
+}
+
 fun decode_type (mode_t m) -> wchar_t {
 	if (S_ISDIR  (m)) return L'd'; if (S_ISBLK  (m)) return L'b';
 	if (S_ISCHR  (m)) return L'c'; if (S_ISLNK  (m)) return L'l';
@@ -1006,10 +1051,9 @@ fun load_colors () {
 	if (!config)
 		return;
 
-	string line;
-	while (getline (*config, line)) {
-		auto tokens = split (line, " ");
-		if (tokens.empty () || line.front () == '#')
+	vector<string> tokens;
+	while (parse_line (*config, tokens)) {
+		if (tokens.empty ())
 			continue;
 		auto name = shift (tokens);
 		for (int i = 0; i < g.AT_COUNT; i++)
@@ -1105,10 +1149,9 @@ fun load_bindings () {
 		actions[name] = action (a++);
 	}
 
-	string line;
-	while (getline (*config, line)) {
-		auto tokens = split (line, " ");
-		if (tokens.empty () || line.front () == '#')
+	vector<string> tokens;
+	while (parse_line (*config, tokens)) {
+		if (tokens.empty ())
 			continue;
 		if (tokens.size () < 3) {
 			cerr << "bindings: expected: context binding action";
