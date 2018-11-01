@@ -202,8 +202,8 @@ fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
 using ncstring = basic_string<cchar_t>;
 
 fun cchar (chtype attrs, wchar_t c) -> cchar_t {
-	cchar_t ch {};
-	setcchar (&ch, &c, attrs, PAIR_NUMBER (attrs), nullptr);
+	cchar_t ch {}; wchar_t ws[] = {c, 0};
+	setcchar (&ch, ws, attrs, PAIR_NUMBER (attrs), nullptr);
 	return ch;
 }
 
