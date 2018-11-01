@@ -373,8 +373,10 @@ static struct {
 	int inotify_fd, inotify_wd = -1;    ///< File watch
 	bool out_of_date;                   ///< Entries may be out of date
 
-	wchar_t editor;                     ///< Prompt character for editing
+	const wchar_t *editor;              ///< Prompt string for editing
 	wstring editor_line;                ///< Current user input
+	void (*editor_on_change) ();        ///< Callback on editor change
+	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
 
 	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_COUNT };
 	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0};
@@ -571,7 +573,7 @@ fun update () {
 	attrset (g.attrs[g.AT_INPUT]);
 	if (g.editor) {
 		move (LINES - 1, 0);
-		auto p = apply_attrs ({g.editor, L' ', L'\0'}, 0);
+		auto p = apply_attrs (wstring (g.editor) + L": ", 0);
 		move (LINES - 1, print (p + apply_attrs (g.editor_line, 0), COLS - 1));
 		curs_set (1);
 	} else
@@ -633,7 +635,7 @@ fun search (const wstring &needle) {
 	g.cursor = best;
 }
 
-fun change_dir (const string& path) {
+fun change_dir (const string &path) {
 	if (chdir (path.c_str ())) {
 		beep ();
 	} else {
@@ -655,21 +657,17 @@ fun choose (const entry &entry) -> bool {
 }
 
 fun handle_editor (wint_t c) {
-	// FIXME: do not check editor actions by the prompt letter
 	auto i = g_input_actions.find (c);
 	switch (i == g_input_actions.end () ? ACTION_NONE : i->second) {
+	case ACTION_INPUT_CONFIRM:
+		if (g.editor_on_confirm)
+			g.editor_on_confirm ();
+		// Fall-through
 	case ACTION_INPUT_ABORT:
 		g.editor_line.clear ();
 		g.editor = 0;
-		break;
-	case ACTION_INPUT_CONFIRM:
-		if (g.editor == L'e') {
-			auto mb = to_mb (g.editor_line);
-			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
-			reload ();
-		}
-		g.editor_line.clear ();
-		g.editor = 0;
+		g.editor_on_change = nullptr;
+		g.editor_on_confirm = nullptr;
 		break;
 	case ACTION_INPUT_B_DELETE:
 		if (!g.editor_line.empty ())
@@ -680,9 +678,8 @@ fun handle_editor (wint_t c) {
 			beep ();
 		} else {
 			g.editor_line += c;
-			if (g.editor == L'/'
-			 || g.editor == L's')
-				search (g.editor_line);
+			if (g.editor_on_change)
+				g.editor_on_change ();
 		}
 	}
 }
@@ -745,13 +742,21 @@ fun handle (wint_t c) -> bool {
 		break;
 
 	case ACTION_SEARCH:
-		g.editor = c;
+		g.editor = L"search";
+		g.editor_on_change = [] {
+			search (g.editor_line);
+		};
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
 		// Fall-through
 	case ACTION_RENAME:
-		g.editor = c & ~ALT;
+		g.editor = L"rename";
+		g.editor_on_confirm = [] {
+			auto mb = to_mb (g.editor_line);
+			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
+			reload ();
+		};
 		break;
 
 	case ACTION_TOGGLE_FULL:
