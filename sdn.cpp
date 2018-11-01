@@ -1064,7 +1064,7 @@ fun load_bindings () {
 
 	// Stringization in the preprocessor is a bit limited, we want lisp-case
 	map<string, action> actions;
-	int a;
+	int a = 0;
 	for (auto p : g_action_names) {
 		string name;
 		for (; *p; p++)
