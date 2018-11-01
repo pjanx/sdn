@@ -41,6 +41,8 @@
 
 #include <sys/inotify.h>
 #include <sys/xattr.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <acl/libacl.h>
 #include <ncurses.h>
 
@@ -155,6 +157,21 @@ template<class T> fun shift (vector<T> &v) -> T {
 	auto front = v.front (); v.erase (begin (v)); return front;
 }
 
+fun capitalize (const string &s) -> string {
+	string result;
+	for (auto c : s)
+		result += result.empty () ? toupper (c) : tolower (c);
+	return result;
+}
+
+/// Underlining for teletypes, also imitated in more(1) and less(1)
+fun underline (const string& s) -> string {
+	string result;
+	for (auto c : s)
+		result.append ({c, 8, '_'});
+	return result;
+}
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 fun xdg_config_home () -> string {
@@ -233,6 +250,13 @@ fun print (const ncstring &nc, int limit) -> int {
 	return total_width;
 }
 
+fun compute_width (const wstring &w) -> int {
+	int total = 0;
+	for (const auto &c : w)
+		total += wcwidth (c);
+	return total;
+}
+
 fun compute_width (const ncstring &nc) -> int {
 	int total = 0;
 	for (const auto &c : nc)
@@ -295,7 +319,7 @@ struct entry {
 	}
 };
 
-#define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(QUIT) \
+#define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(HELP) XX(QUIT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
@@ -312,7 +336,7 @@ static const char *g_action_names[] = {ACTIONS(XX)};
 
 static map<wint_t, action> g_normal_actions = {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
-	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
+	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE}, {'h', ACTION_HELP},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT}, {'q', ACTION_QUIT},
 	{'k', ACTION_UP}, {CTRL 'p', ACTION_UP}, {KEY (UP), ACTION_UP},
@@ -386,7 +410,9 @@ static struct {
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
 	bool ls_symlink_as_target;          ///< ln=target in dircolors
 
-	map<string, wint_t, stringcaseless> key_names;
+	map<string, wint_t, stringcaseless> name_to_key;
+	map<wint_t, string> key_to_name;
+	string action_names[ACTION_COUNT];  ///< Stylized action names
 
 	// Refreshed by reload():
 
@@ -469,7 +495,7 @@ fun make_entry (const struct dirent *f) -> entry {
 	entry e;
 	e.filename = f->d_name;
 	e.info.st_mode = DTTOIF (f->d_type);
-	auto& info = e.info;
+	auto &info = e.info;
 
 	// TODO: benchmark just readdir() vs. lstat(), also on dead mounts;
 	//   it might make sense to stat asynchronously in threads
@@ -622,6 +648,71 @@ fun reload () {
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
 }
 
+// TODO: we should be able to signal failures to the user
+fun run_pager (FILE *contents) {
+	// We don't really need to set O_CLOEXEC, so we're not going to
+	rewind (contents);
+	endwin ();
+
+	switch (pid_t child = fork ()) {
+		int status;
+	case -1:
+		break;
+	case 0:
+		// Put the child in a new foreground process group...
+		setpgid (0, 0);
+		tcsetpgrp (STDOUT_FILENO, getpgid (0));
+		dup2 (fileno (contents), STDIN_FILENO);
+
+		// Behaviour copies man-db's man(1), similar to POSIX man(1)
+		for (auto pager : {(const char *) getenv ("PAGER"), "pager", "cat"})
+			if (pager) execl ("/bin/sh", "/bin/sh", "-c", pager, NULL);
+		_exit (EXIT_FAILURE);
+	default:
+		// ...and make sure of it in the parent as well
+		(void) setpgid (child, child);
+		waitpid (child, &status, 0);
+		tcsetpgrp (STDOUT_FILENO, getpgid (0));
+	}
+
+	refresh ();
+	update ();
+}
+
+fun encode_key (wint_t key) -> string {
+	string encoded;
+	if (key & ALT)
+		encoded.append ("M-");
+	wchar_t bare = key & ~ALT;
+	if (g.key_to_name.count (bare))
+		encoded.append (capitalize (g.key_to_name.at (bare)));
+	else if (bare < 32)
+		encoded.append ("C-").append ({char (tolower (bare + 64))});
+	else
+		encoded.append (to_mb ({bare}));
+	return encoded;
+}
+
+fun show_help () {
+	FILE *contents = tmpfile ();
+	if (!contents)
+		return;
+
+	for (const auto &kv : g_binding_contexts) {
+		fprintf (contents, "%s\n",
+			underline (capitalize (kv.first + " key bindings")).c_str ());
+		for (const auto &kv : *kv.second) {
+			auto key = encode_key (kv.first);
+			key.append (max (0, 10 - compute_width (to_wide (key))), ' ');
+			fprintf (contents, "%s %s\n",
+				key.c_str (), g.action_names[kv.second].c_str ());
+		}
+		fprintf (contents, "\n");
+	}
+	run_pager (contents);
+	fclose (contents);
+}
+
 fun search (const wstring &needle) {
 	int best = g.cursor, best_n = 0;
 	for (int i = 0; i < int (g.entries.size ()); i++) {
@@ -702,6 +793,9 @@ fun handle (wint_t c) -> bool {
 		if (choose (current))
 			break;
 		return false;
+	case ACTION_HELP:
+		show_help ();
+		return true;
 	case ACTION_QUIT:
 		return false;
 
@@ -920,8 +1014,8 @@ fun parse_key (const string &key_name) -> wint_t {
 		}
 		c |= CTRL *p;
 		p += 1;
-	} else if (g.key_names.count (p)) {
-		return c | g.key_names.at (p);
+	} else if (g.name_to_key.count (p)) {
+		return c | g.name_to_key.at (p);
 	} else {
 		wchar_t w; mbstate_t mb {};
 		auto len = strlen (p) + 1, res = mbrtowc (&w, p, len, &mb);
@@ -943,8 +1037,13 @@ fun parse_key (const string &key_name) -> wint_t {
 	return c;
 }
 
+fun learn_named_key (const string &name, wint_t key) {
+	g.name_to_key[g.key_to_name[key] = name] = key;
+}
+
 fun load_bindings () {
-	g.key_names["space"] = ' ';
+	learn_named_key ("space", ' ');
+	learn_named_key ("escape", 0x1b);
 	for (int kc = KEY_MIN; kc < KEY_MAX; kc++) {
 		const char *name = keyname (kc);
 		if (!name)
@@ -956,7 +1055,7 @@ fun load_bindings () {
 			if (*name != '(' && *name != ')')
 				filtered += *name;
 		}
-		g.key_names[filtered] = kc;
+		learn_named_key (filtered, SYM | kc);
 	}
 
 	auto config = xdg_config_find ("/" PROJECT_NAME "/bindings");
@@ -970,6 +1069,7 @@ fun load_bindings () {
 		string name;
 		for (; *p; p++)
 			name += *p == '_' ? '-' : *p + 'a' - 'A';
+		g.action_names[a] = name;
 		actions[name] = action (a++);
 	}
 
@@ -1015,6 +1115,9 @@ int main (int argc, char *argv[]) {
 	// Save the original stdout and force ncurses to use the terminal directly
 	auto output_fd = dup (STDOUT_FILENO);
 	dup2 (STDIN_FILENO, STDOUT_FILENO);
+
+	// So that the neither us nor our children stop on tcsetpgrp()
+	signal (SIGTTOU, SIG_IGN);
 
 	if ((g.inotify_fd = inotify_init1 (IN_NONBLOCK)) < 0) {
 		cerr << "cannot initialize inotify" << endl;
