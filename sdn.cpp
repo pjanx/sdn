@@ -305,20 +305,6 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define KEY(name) (SYM | KEY_ ## name)
 #define CTRL 31 &
 
-struct entry {
-	string filename, target_path;
-	struct stat info = {}, target_info = {};
-
-	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
-	ncstring cols[COLUMNS];
-
-	auto operator< (const entry &other) -> bool {
-		auto a = S_ISDIR (info.st_mode);
-		auto b = S_ISDIR (other.info.st_mode);
-		return (a && !b) || (a == b && filename < other.filename);
-	}
-};
-
 #define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(HELP) XX(QUIT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(GO_START) XX(GO_HOME) \
@@ -383,10 +369,30 @@ struct stringcaseless {
 	}
 };
 
+struct entry {
+	string filename, target_path;
+	struct stat info = {}, target_info = {};
+
+	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
+	ncstring cols[COLUMNS];
+
+	auto operator< (const entry &other) -> bool {
+		auto a = S_ISDIR (info.st_mode);
+		auto b = S_ISDIR (other.info.st_mode);
+		return (a && !b) || (a == b && filename < other.filename);
+	}
+};
+
+struct level {
+	int offset, cursor;                 ///< Scroll offset and cursor position
+	string path, filename;              ///< Level path and filename at cursor
+};
+
 static struct {
 	string cwd;                         ///< Current working directory
 	string start_dir;                   ///< Starting directory
 	vector<entry> entries;              ///< Current directory entries
+	vector<level> levels;               ///< Upper directory levels
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
 	int max_widths[entry::COLUMNS];     ///< Column widths
@@ -726,13 +732,40 @@ fun search (const wstring &needle) {
 	g.cursor = best;
 }
 
+fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
+	if (strncmp (ancestor.c_str (), of.c_str (), ancestor.length ()))
+		return false;
+	return of.c_str ()[ancestor.length ()] == '/'
+		|| (ancestor == "/" && ancestor != of);
+}
+
 fun change_dir (const string &path) {
 	if (chdir (path.c_str ())) {
 		beep ();
+		return;
+	}
+
+	level last {g.offset, g.cursor, g.cwd, g.entries[g.cursor].filename};
+	reload ();
+
+	if (is_ancestor_dir (last.path, g.cwd)) {
+		g.levels.push_back (last);
+		g.offset = g.cursor = 0;
 	} else {
-		// TODO: remember cursor going down, then restore going up
-		g.cursor = 0;
-		reload ();
+		string anchor;
+		auto i = g.levels.rbegin ();
+		while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
+			if (i->path == g.cwd) {
+				g.offset = i->offset;
+				g.cursor = i->cursor;
+				anchor = i->filename;
+			}
+			i++;
+			g.levels.pop_back ();
+		}
+		if (!anchor.empty () && (g.cursor >= g.entries.size ()
+			|| g.entries[g.cursor].filename != anchor))
+			search (to_wide (anchor));
 	}
 }
 
