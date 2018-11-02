@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
+#include <libgen.h>
 
 #include <sys/inotify.h>
 #include <sys/xattr.h>
@@ -252,9 +253,11 @@ fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
 fun xdg_config_write (const string &suffix) -> unique_ptr<fstream> {
 	auto dir = xdg_config_home ();
 	if (dir[0] == '/') {
-		// TODO: try to create the end directory
-		if (fstream fs {dir + "/" PROJECT_NAME "/" + suffix,
-			fstream::in | fstream::out | fstream::trunc})
+		auto path = dir + "/" PROJECT_NAME "/" + suffix;
+		if (!fork ())
+			_exit (-execlp ("mkdir", "mkdir", "-p",
+				dirname (strdup (path.c_str ())), NULL));
+		if (fstream fs {path, fstream::in | fstream::out | fstream::trunc})
 			return make_unique<fstream> (move (fs));
 	}
 	return nullptr;
