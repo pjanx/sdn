@@ -779,8 +779,7 @@ fun search (const wstring &needle) {
 fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
 	if (strncmp (ancestor.c_str (), of.c_str (), ancestor.length ()))
 		return false;
-	return of.c_str ()[ancestor.length ()] == '/'
-		|| (ancestor == "/" && ancestor != of);
+	return of[ancestor.length ()] == '/' || (ancestor == "/" && ancestor != of);
 }
 
 fun change_dir (const string &path) {
