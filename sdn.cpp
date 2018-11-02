@@ -114,7 +114,7 @@ fun needs_shell_quoting (const string &v) -> bool {
 	for (auto c : v)
 		if (strchr ("|&;<>()$`\\\"' \t\n" "*?[#˜=%" "!", c))
 			return true;
-	return false;
+	return v.empty ();
 }
 
 fun shell_escape (const string &v) -> string {
