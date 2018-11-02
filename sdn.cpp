@@ -1298,7 +1298,7 @@ fun load_bindings () {
 }
 
 fun load_history_level (const vector<string> &v) {
-	if (v.size () != 6)
+	if (v.size () != 7)
 		return;
 	// Not checking the hostname and parent PID right now since we can't merge
 	g.levels.push_back ({stoi (v.at (4)), stoi (v.at (5)), v.at (3), v.at (6)});
