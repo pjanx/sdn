@@ -280,6 +280,12 @@ fun decolor (cchar_t &ch) {
 	setcchar (&ch, c, attrs &~ A_REVERSE, 0, nullptr);
 }
 
+fun invert (cchar_t &ch) {
+	wchar_t c[CCHARW_MAX]; attr_t attrs; short pair;
+	getcchar (&ch, c, &attrs, &pair, nullptr);
+	setcchar (&ch, c, attrs ^ A_REVERSE, 0, nullptr);
+}
+
 fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
 	ncstring res;
 	for (auto c : w)
@@ -465,6 +471,7 @@ static struct {
 	bool show_hidden;                   ///< Show hidden files
 	int max_widths[entry::COLUMNS];     ///< Column widths
 	int sort_column = entry::FILENAME;  ///< Sorting column
+	int sort_flash_ttl;                 ///< Sorting column flash TTL
 
 	wstring message;                    ///< Message for the user
 	int message_ttl;                    ///< Time to live for the message
@@ -659,6 +666,8 @@ fun update () {
 		for (int col = start_column; col < entry::COLUMNS; col++) {
 			const auto &field = g.entries[index].cols[col];
 			auto aligned = align (field, alignment[col] * g.max_widths[col]);
+			if (g.sort_flash_ttl && col == g.sort_column)
+				for_each (begin (aligned), end (aligned), invert);
 			if (selected)
 				for_each (begin (aligned), end (aligned), decolor);
 			used += print (aligned + apply_attrs (L" ", 0), COLS - used);
@@ -965,10 +974,12 @@ fun handle (wint_t c) -> bool {
 
 	case ACTION_SORT_LEFT:
 		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
+		g.sort_flash_ttl = 2;
 		reload ();
 		break;
 	case ACTION_SORT_RIGHT:
 		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
+		g.sort_flash_ttl = 2;
 		reload ();
 		break;
 
@@ -1392,6 +1403,8 @@ int main (int argc, char *argv[]) {
 	wint_t c;
 	while (!read_key (c) || handle (c)) {
 		inotify_check ();
+		if (g.sort_flash_ttl && !--g.sort_flash_ttl)
+			update ();
 		if (g.message_ttl && !--g.message_ttl) {
 			g.message.clear ();
 			update ();
