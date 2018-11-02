@@ -29,6 +29,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <tuple>
 
 #include <unistd.h>
 #include <dirent.h>
@@ -376,7 +377,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
-	XX(TOGGLE_FULL) XX(REDRAW) XX(RELOAD) \
+	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE)
 
 #define XX(name) ACTION_ ## name,
@@ -403,6 +404,7 @@ static map<wint_t, action> g_normal_actions {
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
+	{'R', ACTION_REVERSE_SORT},
 	{CTRL 'L', ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
 static map<wint_t, action> g_input_actions {
@@ -443,12 +445,6 @@ struct entry {
 
 	enum { MODES, USER, GROUP, SIZE, MTIME, FILENAME, COLUMNS };
 	ncstring cols[COLUMNS];
-
-	auto operator< (const entry &other) -> bool {
-		auto a = S_ISDIR (info.st_mode);
-		auto b = S_ISDIR (other.info.st_mode);
-		return (a && !b) || (a == b && filename < other.filename);
-	}
 };
 
 struct level {
@@ -464,6 +460,7 @@ static struct {
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
 	bool gravity;                       ///< Entries are shoved to the bottom
+	bool reverse_sort;                  ///< Reverse sort
 	int max_widths[entry::COLUMNS];     ///< Column widths
 
 	wstring message;                    ///< Message for the user
@@ -689,6 +686,16 @@ fun update () {
 	refresh ();
 }
 
+fun operator< (const entry &e1, const entry &e2) -> bool {
+	auto t1 = make_tuple (e1.filename != "..", !S_ISDIR (e1.info.st_mode));
+	auto t2 = make_tuple (e2.filename != "..", !S_ISDIR (e2.info.st_mode));
+	if (t1 != t2)
+		return t1 < t2;
+	return g.reverse_sort
+		? e2.filename < e1.filename
+		: e1.filename < e2.filename;
+}
+
 fun reload () {
 	g.unames.clear();
 	while (auto *ent = getpwent ()) g.unames.emplace(ent->pw_uid, ent->pw_name);
@@ -698,6 +705,11 @@ fun reload () {
 	while (auto *ent = getgrent ()) g.gnames.emplace(ent->gr_gid, ent->gr_name);
 	endgrent();
 
+	string anchor;
+	if (!g.entries.empty ())
+		anchor = g.entries[g.cursor].filename;
+
+	auto old_cwd = g.cwd;
 	auto now = time (NULL); g.now = *localtime (&now);
 	char buf[4096]; g.cwd = getcwd (buf, sizeof buf);
 
@@ -712,6 +724,11 @@ fun reload () {
 	sort (begin (g.entries), end (g.entries));
 	g.out_of_date = false;
 
+	if (g.cwd == old_cwd && !anchor.empty ()) {
+		for (size_t i = 0; i < g.entries.size (); i++)
+			if (g.entries[i].filename == anchor)
+				g.cursor = i;
+	}
 	for (int col = 0; col < entry::COLUMNS; col++) {
 		auto &longest = g.max_widths[col] = 0;
 		for (const auto &entry : g.entries)
@@ -980,6 +997,10 @@ fun handle (wint_t c) -> bool {
 	case ACTION_TOGGLE_FULL:
 		g.full_view = !g.full_view;
 		break;
+	case ACTION_REVERSE_SORT:
+		g.reverse_sort = !g.reverse_sort;
+		reload ();
+		break;
 	case ACTION_REDRAW:
 		clear ();
 		break;
@@ -1241,9 +1262,11 @@ fun load_config () {
 			continue;
 
 		if      (tokens.front () == "full-view")
-			g.full_view = tokens.size () > 1 && tokens.at (1) == "1";
+			g.full_view    = tokens.size () > 1 && tokens.at (1) == "1";
 		else if (tokens.front () == "gravity")
-			g.gravity   = tokens.size () > 1 && tokens.at (1) == "1";
+			g.gravity      = tokens.size () > 1 && tokens.at (1) == "1";
+		else if (tokens.front () == "reverse-sort")
+			g.reverse_sort = tokens.size () > 1 && tokens.at (1) == "1";
 		else if (tokens.front () == "history")
 			load_history_level (tokens);
 	}
@@ -1254,8 +1277,9 @@ fun save_config () {
 	if (!config)
 		return;
 
-	write_line (*config, {"full-view", g.full_view ? "1" : "0"});
-	write_line (*config, {"gravity",   g.gravity   ? "1" : "0"});
+	write_line (*config, {"full-view",    g.full_view    ? "1" : "0"});
+	write_line (*config, {"gravity",      g.gravity      ? "1" : "0"});
+	write_line (*config, {"reverse-sort", g.reverse_sort ? "1" : "0"});
 
 	char hostname[256];
 	if (gethostname (hostname, sizeof hostname))
