@@ -370,7 +370,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 
 #define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(HELP) XX(QUIT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
-	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(GO_START) XX(GO_HOME) \
+	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
 	XX(TOGGLE_FULL) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE)
@@ -394,7 +394,7 @@ static map<wint_t, action> g_normal_actions {
 	{'G', ACTION_BOTTOM}, {ALT | '>', ACTION_BOTTOM}, {KEY(END), ACTION_BOTTOM},
 	{KEY (PPAGE), ACTION_PAGE_PREVIOUS}, {KEY (NPAGE), ACTION_PAGE_NEXT},
 	{CTRL 'y', ACTION_SCROLL_UP}, {CTRL 'e', ACTION_SCROLL_DOWN},
-	{'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
+	{'c', ACTION_CHDIR}, {'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
@@ -813,8 +813,7 @@ fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
 }
 
 fun pop_levels () {
-	string anchor;
-	auto i = g.levels.rbegin ();
+	string anchor; auto i = g.levels.rbegin ();
 	while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
 		if (i->path == g.cwd) {
 			g.offset = i->offset;
@@ -936,6 +935,12 @@ fun handle (wint_t c) -> bool {
 		g.offset--;
 		break;
 
+	case ACTION_CHDIR:
+		g.editor = L"chdir";
+		g.editor_on_confirm = [] {
+			change_dir (to_mb (g.editor_line));
+		};
+		break;
 	case ACTION_GO_START:
 		change_dir (g.start_dir);
 		break;
