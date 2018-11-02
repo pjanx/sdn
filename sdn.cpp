@@ -866,6 +866,24 @@ fun search (const wstring &needle) {
 	g.cursor = best;
 }
 
+fun fix_cursor_and_offset () {
+	g.cursor = max (g.cursor, 0);
+	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
+
+	// Decrease the offset when more items can suddenly fit
+	int pushable = visible_lines () - (int (g.entries.size ()) - g.offset);
+	g.offset -= max (pushable, 0);
+
+	// Make sure cursor is visible
+	g.offset = max (g.offset, 0);
+	g.offset = min (g.offset, int (g.entries.size ()) - 1);
+
+	if (g.offset > g.cursor)
+		g.offset = g.cursor;
+	if (g.cursor - g.offset >= visible_lines ())
+		g.offset = g.cursor - visible_lines () + 1;
+}
+
 fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
 	if (strncmp (ancestor.c_str (), of.c_str (), ancestor.length ()))
 		return false;
@@ -883,8 +901,8 @@ fun pop_levels () {
 		i++;
 		g.levels.pop_back ();
 	}
-	if (!anchor.empty () && (g.cursor >= g.entries.size ()
-	 || g.entries[g.cursor].filename != anchor))
+	fix_cursor_and_offset ();
+	if (!anchor.empty () && g.entries[g.cursor].filename != anchor)
 		search (to_wide (anchor));
 }
 
@@ -1064,22 +1082,7 @@ fun handle (wint_t c) -> bool {
 		if (c != KEY (RESIZE) && c != WEOF)
 			beep ();
 	}
-	g.cursor = max (g.cursor, 0);
-	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
-
-	// Decrease the offset when more items can suddenly fit
-	int pushable = visible_lines () - (int (g.entries.size ()) - g.offset);
-	g.offset -= max (pushable, 0);
-
-	// Make sure cursor is visible
-	g.offset = max (g.offset, 0);
-	g.offset = min (g.offset, int (g.entries.size ()) - 1);
-
-	if (g.offset > g.cursor)
-		g.offset = g.cursor;
-	if (g.cursor - g.offset >= visible_lines ())
-		g.offset = g.cursor - visible_lines () + 1;
-
+	fix_cursor_and_offset ();
 	update ();
 	return true;
 }
