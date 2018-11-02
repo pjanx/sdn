@@ -373,7 +373,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define CTRL 31 &
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
-	XX(CHOOSE) XX(CHOOSE_FULL) \
+	XX(CHOOSE) XX(CHOOSE_FULL) XX(SORT_LEFT) XX(SORT_RIGHT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
@@ -394,6 +394,7 @@ static map<wint_t, action> g_normal_actions {
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT},
+	{'<', ACTION_SORT_LEFT}, {'>', ACTION_SORT_RIGHT},
 	{'k', ACTION_UP}, {CTRL 'p', ACTION_UP}, {KEY (UP), ACTION_UP},
 	{'j', ACTION_DOWN}, {CTRL 'n', ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
@@ -463,6 +464,7 @@ static struct {
 	bool reverse_sort;                  ///< Reverse sort
 	bool show_hidden;                   ///< Show hidden files
 	int max_widths[entry::COLUMNS];     ///< Column widths
+	int sort_column = entry::FILENAME;  ///< Sorting column
 
 	wstring message;                    ///< Message for the user
 	int message_ttl;                    ///< Time to live for the message
@@ -694,9 +696,32 @@ fun operator< (const entry &e1, const entry &e2) -> bool {
 	auto t2 = make_tuple (e2.filename != "..", !S_ISDIR (e2.info.st_mode));
 	if (t1 != t2)
 		return t1 < t2;
-	return g.reverse_sort
-		? e2.filename < e1.filename
-		: e1.filename < e2.filename;
+
+	const auto &a = g.reverse_sort ? e2 : e1;
+	const auto &b = g.reverse_sort ? e1 : e2;
+	switch (g.sort_column) {
+	case entry::MODES:
+		if (a.info.st_mode != b.info.st_mode)
+			return a.info.st_mode < b.info.st_mode;
+		break;
+	case entry::USER:
+		if (a.info.st_uid != b.info.st_uid)
+			return a.info.st_uid < b.info.st_uid;
+		break;
+	case entry::GROUP:
+		if (a.info.st_gid != b.info.st_gid)
+			return a.info.st_gid < b.info.st_gid;
+		break;
+	case entry::SIZE:
+		if (a.info.st_size != b.info.st_size)
+			return a.info.st_size < b.info.st_size;
+		break;
+	case entry::MTIME:
+		if (a.info.st_mtime != b.info.st_mtime)
+			return a.info.st_mtime < b.info.st_mtime;
+		break;
+	}
+	return a.filename < b.filename;
 }
 
 fun reload () {
@@ -937,6 +962,15 @@ fun handle (wint_t c) -> bool {
 		return false;
 	case ACTION_QUIT:
 		return false;
+
+	case ACTION_SORT_LEFT:
+		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
+		reload ();
+		break;
+	case ACTION_SORT_RIGHT:
+		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
+		reload ();
+		break;
 
 	case ACTION_UP:
 		g.cursor--;
@@ -1269,14 +1303,16 @@ fun load_config () {
 		if (tokens.empty ())
 			continue;
 
-		if      (tokens.front () == "full-view")
-			g.full_view    = tokens.size () > 1 && tokens.at (1) == "1";
-		else if (tokens.front () == "gravity")
-			g.gravity      = tokens.size () > 1 && tokens.at (1) == "1";
-		else if (tokens.front () == "reverse-sort")
-			g.reverse_sort = tokens.size () > 1 && tokens.at (1) == "1";
-		else if (tokens.front () == "show-hidden")
-			g.show_hidden  = tokens.size () > 1 && tokens.at (1) == "1";
+		if      (tokens.front () == "full-view"    && tokens.size () > 1)
+			g.full_view    = tokens.at (1) == "1";
+		else if (tokens.front () == "gravity"      && tokens.size () > 1)
+			g.gravity      = tokens.at (1) == "1";
+		else if (tokens.front () == "reverse-sort" && tokens.size () > 1)
+			g.reverse_sort = tokens.at (1) == "1";
+		else if (tokens.front () == "show-hidden"  && tokens.size () > 1)
+			g.show_hidden  = tokens.at (1) == "1";
+		else if (tokens.front () == "sort-column"  && tokens.size () > 1)
+			g.sort_column  = stoi (tokens.at (1));
 		else if (tokens.front () == "history")
 			load_history_level (tokens);
 	}
@@ -1291,6 +1327,8 @@ fun save_config () {
 	write_line (*config, {"gravity",      g.gravity      ? "1" : "0"});
 	write_line (*config, {"reverse-sort", g.reverse_sort ? "1" : "0"});
 	write_line (*config, {"show-hidden",  g.show_hidden  ? "1" : "0"});
+
+	write_line (*config, {"sort-column",  to_string (g.sort_column)});
 
 	char hostname[256];
 	if (gethostname (hostname, sizeof hostname))
