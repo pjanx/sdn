@@ -377,7 +377,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
-	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(REDRAW) XX(RELOAD) \
+	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE)
 
 #define XX(name) ACTION_ ## name,
@@ -404,7 +404,7 @@ static map<wint_t, action> g_normal_actions {
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
-	{'R', ACTION_REVERSE_SORT},
+	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
 	{CTRL 'L', ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
 static map<wint_t, action> g_input_actions {
@@ -461,6 +461,7 @@ static struct {
 	bool full_view;                     ///< Show extended information
 	bool gravity;                       ///< Entries are shoved to the bottom
 	bool reverse_sort;                  ///< Reverse sort
+	bool show_hidden;                   ///< Show hidden files
 	int max_widths[entry::COLUMNS];     ///< Column widths
 
 	wstring message;                    ///< Message for the user
@@ -664,6 +665,8 @@ fun update () {
 	}
 
 	auto bar = apply_attrs (to_wide (g.cwd), g.attrs[g.AT_CWD]);
+	if (!g.show_hidden)
+		bar += apply_attrs (L" (hidden)", 0);
 	if (g.out_of_date)
 		bar += apply_attrs (L" [+]", 0);
 
@@ -716,8 +719,9 @@ fun reload () {
 	auto dir = opendir (".");
 	g.entries.clear ();
 	while (auto f = readdir (dir)) {
+		string name = f->d_name;
 		// Two dots are for navigation but this ain't as useful
-		if (f->d_name != string ("."))
+		if (name != "." && (name == ".." || name[0] != '.' || g.show_hidden))
 			g.entries.push_back (make_entry (f));
 	}
 	closedir (dir);
@@ -1001,6 +1005,10 @@ fun handle (wint_t c) -> bool {
 		g.reverse_sort = !g.reverse_sort;
 		reload ();
 		break;
+	case ACTION_SHOW_HIDDEN:
+		g.show_hidden = !g.show_hidden;
+		reload ();
+		break;
 	case ACTION_REDRAW:
 		clear ();
 		break;
@@ -1267,6 +1275,8 @@ fun load_config () {
 			g.gravity      = tokens.size () > 1 && tokens.at (1) == "1";
 		else if (tokens.front () == "reverse-sort")
 			g.reverse_sort = tokens.size () > 1 && tokens.at (1) == "1";
+		else if (tokens.front () == "show-hidden")
+			g.show_hidden  = tokens.size () > 1 && tokens.at (1) == "1";
 		else if (tokens.front () == "history")
 			load_history_level (tokens);
 	}
@@ -1280,6 +1290,7 @@ fun save_config () {
 	write_line (*config, {"full-view",    g.full_view    ? "1" : "0"});
 	write_line (*config, {"gravity",      g.gravity      ? "1" : "0"});
 	write_line (*config, {"reverse-sort", g.reverse_sort ? "1" : "0"});
+	write_line (*config, {"show-hidden",  g.show_hidden  ? "1" : "0"});
 
 	char hostname[256];
 	if (gethostname (hostname, sizeof hostname))
