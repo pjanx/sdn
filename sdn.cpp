@@ -461,6 +461,9 @@ static struct {
 	bool gravity;                       ///< Entries are shoved to the bottom
 	int max_widths[entry::COLUMNS];     ///< Column widths
 
+	wstring message;                    ///< Message for the user
+	int message_ttl;                    ///< Time to live for the message
+
 	string chosen;                      ///< Chosen item for the command line
 	bool chosen_full;                   ///< Use the full path
 
@@ -667,13 +670,16 @@ fun update () {
 	hline (' ', COLS - print (bar, COLS));
 
 	attrset (g.attrs[g.AT_INPUT]);
+	curs_set (0);
 	if (g.editor) {
 		move (LINES - 1, 0);
 		auto p = apply_attrs (wstring (g.editor) + L": ", 0);
 		move (LINES - 1, print (p + apply_attrs (g.editor_line, 0), COLS - 1));
 		curs_set (1);
-	} else
-		curs_set (0);
+	} else if (!g.message.empty ()) {
+		move (LINES - 1, 0);
+		print (apply_attrs (g.message, 0), COLS);
+	}
 
 	refresh ();
 }
@@ -718,7 +724,11 @@ fun reload () {
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
 }
 
-// TODO: we should be able to signal failures to the user
+fun show_message (const string &message, int ttl = 30) {
+	g.message = to_wide (message);
+	g.message_ttl = ttl;
+}
+
 fun run_pager (FILE *contents) {
 	// We don't really need to set O_CLOEXEC, so we're not going to
 	rewind (contents);
@@ -821,6 +831,7 @@ fun pop_levels () {
 
 fun change_dir (const string &path) {
 	if (chdir (path.c_str ())) {
+		show_message (strerror (errno));
 		beep ();
 		return;
 	}
@@ -1293,8 +1304,13 @@ int main (int argc, char *argv[]) {
 	}
 
 	wint_t c;
-	while (!read_key (c) || handle (c))
+	while (!read_key (c) || handle (c)) {
 		inotify_check ();
+		if (g.message_ttl && !--g.message_ttl) {
+			g.message.clear ();
+			update ();
+		}
+	}
 	endwin ();
 	save_config ();
 
