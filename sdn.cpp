@@ -478,6 +478,7 @@ static struct {
 
 	string chosen;                      ///< Chosen item for the command line
 	bool no_chdir;                      ///< Do not tell the shell to chdir
+	bool quitting;                      ///< Whether we should quit already
 
 	int inotify_fd, inotify_wd = -1;    ///< File watch
 	bool out_of_date;                   ///< Entries may be out of date
@@ -924,15 +925,15 @@ fun change_dir (const string &path) {
 	}
 }
 
-fun choose (const entry &entry) -> bool {
+fun choose (const entry &entry) {
 	// Dive into directories and accessible symlinks to them
 	if (!S_ISDIR (entry.info.st_mode)
 	 && !S_ISDIR (entry.target_info.st_mode)) {
 		g.chosen = entry.filename;
-		return false;
+		g.quitting = true;
+	} else {
+		change_dir (entry.filename);
 	}
-	change_dir (entry.filename);
-	return true;
 }
 
 fun handle_editor (wint_t c) {
@@ -976,19 +977,20 @@ fun handle (wint_t c) -> bool {
 	case ACTION_CHOOSE_FULL:
 		g.chosen = g.cwd + "/" + current.filename;
 		g.no_chdir = true;
-		return false;
+		g.quitting = true;
+		break;
 	case ACTION_CHOOSE:
-		if (choose (current))
-			break;
-		return false;
+		choose (current);
+		break;
 	case ACTION_HELP:
 		show_help ();
-		return true;
+		break;
 	case ACTION_QUIT_NO_CHDIR:
 		g.no_chdir = true;
-		return false;
+		// Fall-through
 	case ACTION_QUIT:
-		return false;
+		g.quitting = true;
+		break;
 
 	case ACTION_SORT_LEFT:
 		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
@@ -1048,6 +1050,9 @@ fun handle (wint_t c) -> bool {
 		g.editor_on_change = [] {
 			search (g.editor_line);
 		};
+		g.editor_on_confirm = [] {
+			choose (g.entries[g.cursor]);
+		};
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
@@ -1084,7 +1089,7 @@ fun handle (wint_t c) -> bool {
 	}
 	fix_cursor_and_offset ();
 	update ();
-	return true;
+	return !g.quitting;
 }
 
 fun inotify_check () {
