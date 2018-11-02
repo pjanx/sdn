@@ -14,10 +14,12 @@ commands.  It enables you to:
 The only supported platform is Linux.  I wanted to try a different, simpler
 approach here, and the end result is very friendly to tinkering.
 
+image::sdn.png[align="center"]
+
 Building
 --------
 Build dependencies: CMake and/or make, a C++14 compiler, pkg-config +
-Runtime dependencies: ncursesw
+Runtime dependencies: ncursesw, libacl
 
  $ git clone https://github.com/pjanouch/sdn.git
  $ mkdir sdn/build
