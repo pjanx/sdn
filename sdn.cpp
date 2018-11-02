@@ -371,7 +371,8 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define KEY(name) (SYM | KEY_ ## name)
 #define CTRL 31 &
 
-#define ACTIONS(XX) XX(NONE) XX(CHOOSE) XX(CHOOSE_FULL) XX(HELP) XX(QUIT) \
+#define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
+	XX(CHOOSE) XX(CHOOSE_FULL) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
@@ -389,8 +390,9 @@ static const char *g_action_names[] = {ACTIONS(XX)};
 static map<wint_t, action> g_normal_actions {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
 	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE}, {'h', ACTION_HELP},
+	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
-	{ALT | 'o', ACTION_QUIT}, {'q', ACTION_QUIT},
+	{ALT | 'o', ACTION_QUIT},
 	{'k', ACTION_UP}, {CTRL 'p', ACTION_UP}, {KEY (UP), ACTION_UP},
 	{'j', ACTION_DOWN}, {CTRL 'n', ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
@@ -468,7 +470,7 @@ static struct {
 	int message_ttl;                    ///< Time to live for the message
 
 	string chosen;                      ///< Chosen item for the command line
-	bool chosen_full;                   ///< Use the full path
+	bool no_chdir;                      ///< Do not tell the shell to chdir
 
 	int inotify_fd, inotify_wd = -1;    ///< File watch
 	bool out_of_date;                   ///< Entries may be out of date
@@ -899,8 +901,8 @@ fun handle (wint_t c) -> bool {
 	auto i = g_normal_actions.find (c);
 	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_CHOOSE_FULL:
-		g.chosen_full = true;
-		g.chosen = current.filename;
+		g.chosen = g.cwd + "/" + current.filename;
+		g.no_chdir = true;
 		return false;
 	case ACTION_CHOOSE:
 		if (choose (current))
@@ -909,6 +911,9 @@ fun handle (wint_t c) -> bool {
 	case ACTION_HELP:
 		show_help ();
 		return true;
+	case ACTION_QUIT_NO_CHDIR:
+		g.no_chdir = true;
+		return false;
 	case ACTION_QUIT:
 		return false;
 
@@ -1329,12 +1334,7 @@ int main (int argc, char *argv[]) {
 	// We can't portably create a standard stream from an FD, so modify the FD
 	dup2 (output_fd, STDOUT_FILENO);
 
-	if (g.chosen_full) {
-		auto full_path = g.cwd + "/" + g.chosen;
-		cout << "local insert=" << shell_escape (full_path) << endl;
-		return 0;
-	}
-	if (g.cwd != g.start_dir)
+	if (g.cwd != g.start_dir && !g.no_chdir)
 		cout << "local cd=" << shell_escape (g.cwd) << endl;
 	if (!g.chosen.empty ())
 		cout << "local insert=" << shell_escape (g.chosen) << endl;
