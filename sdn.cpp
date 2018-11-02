@@ -175,6 +175,14 @@ fun parse_line (istream &is, vector<string> &out) -> bool {
 	}
 }
 
+fun write_line (ostream &os, const vector<string> &in) {
+	if (!in.empty ())
+		os << shell_escape (in.at (0));
+	for (size_t i = 1; i < in.size (); i++)
+		os << " " << shell_escape (in.at (i));
+	os << endl;
+}
+
 fun decode_type (mode_t m) -> wchar_t {
 	if (S_ISDIR  (m)) return L'd'; if (S_ISBLK  (m)) return L'b';
 	if (S_ISCHR  (m)) return L'c'; if (S_ISLNK  (m)) return L'l';
@@ -235,8 +243,19 @@ fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
 	for (const auto &dir : dirs) {
 		if (dir[0] != '/')
 			continue;
-		if (ifstream ifs {dir + suffix})
+		if (ifstream ifs {dir + "/" PROJECT_NAME "/" + suffix})
 			return make_unique<ifstream> (move (ifs));
+	}
+	return nullptr;
+}
+
+fun xdg_config_write (const string &suffix) -> unique_ptr<fstream> {
+	auto dir = xdg_config_home ();
+	if (dir[0] == '/') {
+		// TODO: try to create the end directory
+		if (fstream fs {dir + "/" PROJECT_NAME "/" + suffix,
+			fstream::in | fstream::out | fstream::trunc})
+			return make_unique<fstream> (move (fs));
 	}
 	return nullptr;
 }
@@ -439,6 +458,7 @@ static struct {
 	vector<level> levels;               ///< Upper directory levels
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
+	bool gravity;                       ///< Entries are shoved to the bottom
 	int max_widths[entry::COLUMNS];     ///< Column widths
 
 	string chosen;                      ///< Chosen item for the command line
@@ -625,7 +645,7 @@ fun update () {
 		auto index = g.offset + i;
 		bool selected = index == g.cursor;
 		attrset (selected ? g.attrs[g.AT_CURSOR] : 0);
-		move (available - used + i, 0);
+		move (g.gravity ? (available - used + i) : i, 0);
 
 		auto used = 0;
 		for (int col = start_column; col < entry::COLUMNS; col++) {
@@ -782,6 +802,23 @@ fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
 	return of[ancestor.length ()] == '/' || (ancestor == "/" && ancestor != of);
 }
 
+fun pop_levels () {
+	string anchor;
+	auto i = g.levels.rbegin ();
+	while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
+		if (i->path == g.cwd) {
+			g.offset = i->offset;
+			g.cursor = i->cursor;
+			anchor = i->filename;
+		}
+		i++;
+		g.levels.pop_back ();
+	}
+	if (!anchor.empty () && (g.cursor >= g.entries.size ()
+	 || g.entries[g.cursor].filename != anchor))
+		search (to_wide (anchor));
+}
+
 fun change_dir (const string &path) {
 	if (chdir (path.c_str ())) {
 		beep ();
@@ -795,20 +832,7 @@ fun change_dir (const string &path) {
 		g.levels.push_back (last);
 		g.offset = g.cursor = 0;
 	} else {
-		string anchor;
-		auto i = g.levels.rbegin ();
-		while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
-			if (i->path == g.cwd) {
-				g.offset = i->offset;
-				g.cursor = i->cursor;
-				anchor = i->filename;
-			}
-			i++;
-			g.levels.pop_back ();
-		}
-		if (!anchor.empty () && (g.cursor >= g.entries.size ()
-			|| g.entries[g.cursor].filename != anchor))
-			search (to_wide (anchor));
+		pop_levels ();
 	}
 }
 
@@ -1046,7 +1070,7 @@ fun load_colors () {
 	if (const char *colors = getenv ("LS_COLORS"))
 		load_ls_colors (split (colors, ":"));
 
-	auto config = xdg_config_find ("/" PROJECT_NAME "/look");
+	auto config = xdg_config_find ("look");
 	if (!config)
 		return;
 
@@ -1133,7 +1157,7 @@ fun load_bindings () {
 		learn_named_key (filtered, SYM | kc);
 	}
 
-	auto config = xdg_config_find ("/" PROJECT_NAME "/bindings");
+	auto config = xdg_config_find ("bindings");
 	if (!config)
 		return;
 
@@ -1175,6 +1199,53 @@ fun load_bindings () {
 	}
 }
 
+fun load_history_level (const vector<string> &v) {
+	if (v.size () != 6)
+		return;
+	// Not checking the hostname and parent PID right now since we can't merge
+	g.levels.push_back ({stoi (v.at (4)), stoi (v.at (5)), v.at (3), v.at (6)});
+}
+
+fun load_config () {
+	auto config = xdg_config_find ("config");
+	if (!config)
+		return;
+
+	vector<string> tokens;
+	while (parse_line (*config, tokens)) {
+		if (tokens.empty ())
+			continue;
+
+		if      (tokens.front () == "full-view")
+			g.full_view = tokens.size () > 1 && tokens.at (1) == "1";
+		else if (tokens.front () == "gravity")
+			g.gravity   = tokens.size () > 1 && tokens.at (1) == "1";
+		else if (tokens.front () == "history")
+			load_history_level (tokens);
+	}
+}
+
+fun save_config () {
+	auto config = xdg_config_write ("config");
+	if (!config)
+		return;
+
+	write_line (*config, {"full-view", g.full_view ? "1" : "0"});
+	write_line (*config, {"gravity",   g.gravity   ? "1" : "0"});
+
+	char hostname[256];
+	if (gethostname (hostname, sizeof hostname))
+		*hostname = 0;
+
+	auto ppid = std::to_string (getppid ());
+	for (auto i = g.levels.begin (); i != g.levels.end (); i++)
+		write_line (*config, {"history", hostname, ppid, i->path,
+			to_string (i->offset), to_string (i->cursor), i->filename});
+	write_line (*config, {"history", hostname, ppid, g.cwd,
+		to_string (g.offset), to_string (g.cursor),
+		g.entries[g.cursor].filename});
+}
+
 int main (int argc, char *argv[]) {
 	(void) argc;
 	(void) argv;
@@ -1200,6 +1271,7 @@ int main (int argc, char *argv[]) {
 
 	locale::global (locale (""));
 	load_bindings ();
+	load_config ();
 
 	if (!initscr () || cbreak () == ERR || noecho () == ERR || nonl () == ERR) {
 		cerr << "cannot initialize screen" << endl;
@@ -1209,6 +1281,7 @@ int main (int argc, char *argv[]) {
 	load_colors ();
 	reload ();
 	g.start_dir = g.cwd;
+	pop_levels ();
 	update ();
 
 	// Invoking keypad() earlier would make ncurses flush its output buffer,
@@ -1223,6 +1296,7 @@ int main (int argc, char *argv[]) {
 	while (!read_key (c) || handle (c))
 		inotify_check ();
 	endwin ();
+	save_config ();
 
 	// Presumably it is going to end up as an argument, so quote it
 	if (!g.chosen.empty ())
