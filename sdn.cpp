@@ -30,6 +30,7 @@
 #include <fstream>
 #include <map>
 #include <tuple>
+#include <memory>
 
 #include <unistd.h>
 #include <dirent.h>
