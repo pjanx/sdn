@@ -91,6 +91,8 @@ bar 16 255 ul
 cwd bold
 input
 ....
+Filename colors are taken from the `LS_COLORS` environment variable.
+Run 'dircolors' to get some defaults.
 
 Similar software
 ----------------
