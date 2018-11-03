@@ -21,6 +21,9 @@ Building
 Build dependencies: CMake and/or make, a C++14 compiler, pkg-config +
 Runtime dependencies: ncursesw, libacl
 
+Unfortunately most LLVM libc++ versions have a bug that crashes 'sdn' on start.
+Use GNU libstdc++ if you're affected.
+
  $ git clone https://github.com/pjanouch/sdn.git
  $ mkdir sdn/build
  $ cd sdn/build
@@ -92,7 +95,7 @@ cwd bold
 input
 ....
 Filename colors are taken from the `LS_COLORS` environment variable.
-Run 'dircolors' to get some defaults.
+Run `dircolors` to get some defaults.
 
 Similar software
 ----------------
