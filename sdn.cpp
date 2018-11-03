@@ -1430,7 +1430,9 @@ int main (int argc, char *argv[]) {
 
 	if (g.cwd != g.start_dir && !g.no_chdir)
 		cout << "local cd=" << shell_escape (g.cwd) << endl;
-	if (!g.chosen.empty ())
-		cout << "local insert=" << shell_escape (g.chosen) << endl;
+	else
+		cout << "local cd=" << endl;
+
+	cout << "local insert=" << shell_escape (g.chosen) << endl;
 	return 0;
 }
