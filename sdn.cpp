@@ -246,8 +246,10 @@ fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
 	for (const auto &dir : dirs) {
 		if (dir[0] != '/')
 			continue;
-		if (ifstream ifs {dir + "/" PROJECT_NAME "/" + suffix})
-			return make_unique<ifstream> (move (ifs));
+		auto ifs = make_unique<ifstream>
+			(dir + "/" PROJECT_NAME "/" + suffix);
+		if (*ifs)
+			return ifs;
 	}
 	return nullptr;
 }
@@ -259,8 +261,10 @@ fun xdg_config_write (const string &suffix) -> unique_ptr<fstream> {
 		if (!fork ())
 			_exit (-execlp ("mkdir", "mkdir", "-p",
 				dirname (strdup (path.c_str ())), NULL));
-		if (fstream fs {path, fstream::in | fstream::out | fstream::trunc})
-			return make_unique<fstream> (move (fs));
+		auto fs = make_unique<fstream>
+			(path, fstream::in | fstream::out | fstream::trunc);
+		if (*fs)
+			return fs;
 	}
 	return nullptr;
 }
