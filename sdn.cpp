@@ -707,8 +707,10 @@ fun update () {
 }
 
 fun operator< (const entry &e1, const entry &e2) -> bool {
-	auto t1 = make_tuple (e1.filename != "..", !S_ISDIR (e1.info.st_mode));
-	auto t2 = make_tuple (e2.filename != "..", !S_ISDIR (e2.info.st_mode));
+	auto t1 = make_tuple (e1.filename != "..",
+		!S_ISDIR (e1.info.st_mode) && !S_ISDIR (e1.target_info.st_mode));
+	auto t2 = make_tuple (e2.filename != "..",
+		!S_ISDIR (e2.info.st_mode) && !S_ISDIR (e2.target_info.st_mode));
 	if (t1 != t2)
 		return t1 < t2;
 
