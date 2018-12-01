@@ -627,7 +627,7 @@ fun make_entry (const struct dirent *f) -> entry {
 		: apply_attrs (to_wstring (info.st_uid), 0);
 
 	auto grp = g.gnames.find (info.st_gid);
-	e.cols[entry::GROUP] = (grp != g.unames.end ())
+	e.cols[entry::GROUP] = (grp != g.gnames.end ())
 		? apply_attrs (to_wide (grp->second), 0)
 		: apply_attrs (to_wstring (info.st_gid), 0);
 
