@@ -743,11 +743,13 @@ fun operator< (const entry &e1, const entry &e2) -> bool {
 
 fun reload () {
 	g.unames.clear();
-	while (auto *ent = getpwent ()) g.unames.emplace(ent->pw_uid, ent->pw_name);
+	while (auto *ent = getpwent ())
+		g.unames.emplace (ent->pw_uid, ent->pw_name);
 	endpwent();
 
 	g.gnames.clear();
-	while (auto *ent = getgrent ()) g.gnames.emplace(ent->gr_gid, ent->gr_name);
+	while (auto *ent = getgrent ())
+		g.gnames.emplace (ent->gr_gid, ent->gr_name);
 	endgrent();
 
 	string anchor;
