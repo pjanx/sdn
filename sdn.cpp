@@ -765,7 +765,8 @@ fun reload () {
 	while (auto f = readdir (dir)) {
 		string name = f->d_name;
 		// Two dots are for navigation but this ain't as useful
-		if (name != "." && (name == ".." || name[0] != '.' || g.show_hidden))
+		if (name != "." && (name != ".." || g.cwd != "/")
+		 && (name[0] != '.' || g.show_hidden))
 			g.entries.push_back (make_entry (f));
 	}
 	closedir (dir);
