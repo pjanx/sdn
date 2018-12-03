@@ -384,7 +384,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define CTRL 31 &
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
-	XX(CHOOSE) XX(CHOOSE_FULL) XX(SORT_LEFT) XX(SORT_RIGHT) \
+	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
@@ -401,7 +401,8 @@ static const char *g_action_names[] = {ACTIONS(XX)};
 
 static map<wint_t, action> g_normal_actions {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
-	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE}, {'h', ACTION_HELP},
+	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
+	{KEY (F (3)), ACTION_VIEW}, {KEY (F (4)), ACTION_EDIT}, {'h', ACTION_HELP},
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT},
@@ -800,6 +801,42 @@ fun show_message (const string &message, int ttl = 30) {
 	g.message_ttl = ttl;
 }
 
+fun run_program (initializer_list<const char*> list, const string &filename) {
+	endwin ();
+
+	switch (pid_t child = fork ()) {
+		int status;
+	case -1:
+		break;
+	case 0:
+		// Put the child in a new foreground process group...
+		setpgid (0, 0);
+		tcsetpgrp (STDOUT_FILENO, getpgid (0));
+
+		for (auto pager : list)
+			if (pager) execl ("/bin/sh", "/bin/sh", "-c", (string (pager)
+				+ " " + shell_escape (filename)).c_str (), NULL);
+		_exit (EXIT_FAILURE);
+	default:
+		// ...and make sure of it in the parent as well
+		(void) setpgid (child, child);
+		waitpid (child, &status, 0);
+		tcsetpgrp (STDOUT_FILENO, getpgid (0));
+	}
+
+	refresh ();
+	update ();
+}
+
+fun view (const string &filename) {
+	run_program ({(const char *) getenv ("PAGER"), "pager", "cat"}, filename);
+}
+
+fun edit (const string &filename) {
+	run_program ({(const char *) getenv ("VISUAL"),
+		(const char *) getenv ("EDITOR"), "vi"}, filename);
+}
+
 fun run_pager (FILE *contents) {
 	// We don't really need to set O_CLOEXEC, so we're not going to
 	rewind (contents);
@@ -991,6 +1028,12 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_CHOOSE:
 		choose (current);
+		break;
+	case ACTION_VIEW:
+		view (current.filename);
+		break;
+	case ACTION_EDIT:
+		edit (current.filename);
 		break;
 	case ACTION_HELP:
 		show_help ();
