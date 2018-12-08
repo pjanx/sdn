@@ -98,6 +98,7 @@ fun prefix_length (const wstring &in, const wstring &of) -> int {
 	return score;
 }
 
+// TODO: this omits empty elements, check usages
 fun split (const string &s, const string &sep, vector<string> &out) {
 	size_t mark = 0, p = s.find (sep);
 	for (; p != string::npos; p = s.find (sep, (mark = p + sep.length ())))
@@ -742,7 +743,7 @@ fun operator< (const entry &e1, const entry &e2) -> bool {
 	return a.filename < b.filename;
 }
 
-fun reload () {
+fun reload (const string &old_cwd) {
 	g.unames.clear();
 	while (auto *ent = getpwent ())
 		g.unames.emplace (ent->pw_uid, ent->pw_name);
@@ -757,10 +758,7 @@ fun reload () {
 	if (!g.entries.empty ())
 		anchor = g.entries[g.cursor].filename;
 
-	auto old_cwd = g.cwd;
 	auto now = time (NULL); g.now = *localtime (&now);
-	char buf[4096]; g.cwd = getcwd (buf, sizeof buf);
-
 	auto dir = opendir (".");
 	g.entries.clear ();
 	while (auto f = readdir (dir)) {
@@ -792,6 +790,7 @@ fun reload () {
 		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
 
 	// We don't show atime, so access and open are merely spam
+	char buf[PATH_MAX];
 	g.inotify_wd = inotify_add_watch (g.inotify_fd, buf,
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
 }
@@ -954,15 +953,88 @@ fun pop_levels () {
 		search (to_wide (anchor));
 }
 
+fun explode_path (const string &path, vector<string> &out) {
+	size_t mark = 0, p = path.find ("/");
+	for (; p != string::npos; p = path.find ("/", (mark = p + 1)))
+		out.push_back (path.substr (mark, p - mark));
+	if (mark < path.length ())
+		out.push_back (path.substr (mark));
+}
+
+fun serialize_path (const vector<string> &components) -> string {
+	string result;
+	for (const auto &i : components)
+		result.append (i).append ("/");
+
+	auto n = result.find_last_not_of ('/');
+	if (n != result.npos)
+		return result.erase (n + 1);
+	return result;
+}
+
+fun absolutize (const string &abs_base, const string &path) -> string {
+	if (path[0] == '/')
+		return path;
+	if (!abs_base.empty () && abs_base.back () == '/')
+		return abs_base + path;
+	return abs_base + "/" + path;
+}
+
+fun relativize (string current, const string &path) -> string {
+	if (current == path)
+		return ".";
+	if (current.back () != '/')
+		current += '/';
+	if (!strncmp (current.c_str (), path.c_str (), current.length ()))
+		return path.substr (current.length ());
+	return path;
+}
+
+// Roughly follows the POSIX description of `cd -L` because of symlinks.
+// HOME and CDPATH handling is ommitted.
 fun change_dir (const string &path) {
-	if (chdir (path.c_str ())) {
+	if (g.cwd[0] != '/') {
+		show_message ("cannot figure out absolute path");
+		beep ();
+		return;
+	}
+
+	vector<string> in, out;
+	explode_path (absolutize (g.cwd, path), in);
+
+	// Paths with exactly two leading slashes may get special treatment
+	int startempty = 1;
+	if (in.size () >= 2 && in[1] == "" && (in.size () < 3 || in[2] != ""))
+		startempty = 2;
+
+	struct stat s{};
+	for (size_t i = 0; i < in.size (); i++)
+		if (in[i] == "..") {
+			auto parent = relativize (g.cwd, serialize_path (out));
+			if (errno = 0, !stat (parent.c_str (), &s) && !S_ISDIR (s.st_mode))
+				errno = ENOTDIR;
+			if (errno) {
+				show_message (parent + ": " + strerror (errno));
+				beep ();
+				return;
+			}
+			if (!out.back().empty ())
+				out.pop_back ();
+		} else if (in[i] != "." && (!in[i].empty () || i < startempty)) {
+			out.push_back (in[i]);
+		}
+
+	auto full_path = serialize_path (out);
+	if (chdir (relativize (g.cwd, full_path).c_str ())) {
 		show_message (strerror (errno));
 		beep ();
 		return;
 	}
 
-	level last {g.offset, g.cursor, g.cwd, g.entries[g.cursor].filename};
-	reload ();
+	auto old_cwd = g.cwd;
+	level last {g.offset, g.cursor, old_cwd, g.entries[g.cursor].filename};
+	g.cwd = full_path;
+	reload (old_cwd);
 
 	if (is_ancestor_dir (last.path, g.cwd)) {
 		g.levels.push_back (last);
@@ -970,6 +1042,29 @@ fun change_dir (const string &path) {
 	} else {
 		pop_levels ();
 	}
+}
+
+// Roughly follows the POSIX description of the PWD environment variable
+fun initial_cwd () -> string {
+	char cwd[4096] = ""; getcwd (cwd, sizeof cwd);
+	const char *pwd = getenv ("PWD");
+	if (!pwd || pwd[0] != '/' || strlen (pwd) >= PATH_MAX)
+		return cwd;
+
+	// Extra slashes shouldn't break anything for us
+	vector<string> components;
+	explode_path (pwd, components);
+	for (const auto &i : components) {
+		if (i == "." || i == "..")
+			return cwd;
+	}
+
+	// Check if it "is an absolute pathname of the current working directory."
+	// This particular method won't match on bind mounts, which is desired.
+	char *real = realpath (pwd, nullptr);
+	bool ok = real && !strcmp (cwd, real);
+	free (real);
+	return ok ? pwd : cwd;
 }
 
 fun choose (const entry &entry) {
@@ -1048,12 +1143,12 @@ fun handle (wint_t c) -> bool {
 	case ACTION_SORT_LEFT:
 		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload ();
+		reload (g.cwd);
 		break;
 	case ACTION_SORT_RIGHT:
 		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload ();
+		reload (g.cwd);
 		break;
 
 	case ACTION_UP:
@@ -1115,7 +1210,7 @@ fun handle (wint_t c) -> bool {
 		g.editor_on_confirm = [] {
 			auto mb = to_mb (g.editor_line);
 			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
-			reload ();
+			reload (g.cwd);
 		};
 		break;
 
@@ -1124,17 +1219,17 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_REVERSE_SORT:
 		g.reverse_sort = !g.reverse_sort;
-		reload ();
+		reload (g.cwd);
 		break;
 	case ACTION_SHOW_HIDDEN:
 		g.show_hidden = !g.show_hidden;
-		reload ();
+		reload (g.cwd);
 		break;
 	case ACTION_REDRAW:
 		clear ();
 		break;
 	case ACTION_RELOAD:
-		reload ();
+		reload (g.cwd);
 		break;
 	default:
 		if (c != KEY (RESIZE) && c != WEOF)
@@ -1448,8 +1543,8 @@ int main (int argc, char *argv[]) {
 	}
 
 	load_colors ();
-	reload ();
-	g.start_dir = g.cwd;
+	g.start_dir = g.cwd = initial_cwd ();
+	reload (g.cwd);
 	pop_levels ();
 	update ();
 
