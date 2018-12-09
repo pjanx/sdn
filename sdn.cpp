@@ -764,8 +764,9 @@ fun reload (const string &old_cwd) {
 	while (auto f = readdir (dir)) {
 		string name = f->d_name;
 		// Two dots are for navigation but this ain't as useful
-		if (name != "." && (name != ".." || g.cwd != "/")
-		 && (name[0] != '.' || g.show_hidden))
+		if (name == ".")
+			continue;
+		if (name == ".." ? g.cwd != "/" : (name[0] != '.' || g.show_hidden))
 			g.entries.push_back (make_entry (f));
 	}
 	closedir (dir);
@@ -1003,7 +1004,7 @@ fun change_dir (const string &path) {
 	explode_path (absolutize (g.cwd, path), in);
 
 	// Paths with exactly two leading slashes may get special treatment
-	int startempty = 1;
+	size_t startempty = 1;
 	if (in.size () >= 2 && in[1] == "" && (in.size () < 3 || in[2] != ""))
 		startempty = 2;
 
