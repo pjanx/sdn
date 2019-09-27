@@ -386,7 +386,8 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
 	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
-	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
+	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
+	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
 	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
@@ -412,6 +413,7 @@ static map<wint_t, action> g_normal_actions {
 	{'j', ACTION_DOWN}, {CTRL 'n', ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
 	{'G', ACTION_BOTTOM}, {ALT | '>', ACTION_BOTTOM}, {KEY(END), ACTION_BOTTOM},
+	{'H', ACTION_HIGH}, {'M', ACTION_MIDDLE}, {'L', ACTION_LOW},
 	{KEY (PPAGE), ACTION_PAGE_PREVIOUS}, {KEY (NPAGE), ACTION_PAGE_NEXT},
 	{CTRL 'y', ACTION_SCROLL_UP}, {CTRL 'e', ACTION_SCROLL_DOWN},
 	{'c', ACTION_CHDIR}, {'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
@@ -922,7 +924,7 @@ fun fix_cursor_and_offset () {
 	int pushable = visible_lines () - (int (g.entries.size ()) - g.offset);
 	g.offset -= max (pushable, 0);
 
-	// Make sure cursor is visible
+	// Make sure the cursor is visible
 	g.offset = max (g.offset, 0);
 	g.offset = min (g.offset, int (g.entries.size ()) - 1);
 
@@ -1163,6 +1165,17 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_BOTTOM:
 		g.cursor = int (g.entries.size ()) - 1;
+		break;
+
+	case ACTION_HIGH:
+		g.cursor = g.offset;
+		break;
+	case ACTION_MIDDLE:
+		g.cursor = g.offset + (min (int (g.entries.size ()) - g.offset,
+			visible_lines ()) - 1) / 2;
+		break;
+	case ACTION_LOW:
+		g.cursor = g.offset + visible_lines () - 1;
 		break;
 
 	case ACTION_PAGE_PREVIOUS:
