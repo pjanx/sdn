@@ -665,7 +665,8 @@ fun update () {
 	erase ();
 
 	int available = visible_lines ();
-	int used = min (available, int (g.entries.size ()) - g.offset);
+	int all = g.entries.size ();
+	int used = min (available, all - g.offset);
 	for (int i = 0; i < used; i++) {
 		auto index = g.offset + i;
 		bool selected = index == g.cursor;
@@ -693,7 +694,19 @@ fun update () {
 
 	move (LINES - 2, 0);
 	attrset (g.attrs[g.AT_BAR]);
-	hline (' ', COLS - print (bar, COLS));
+	int unused = COLS - print (bar, COLS);
+	hline (' ', unused);
+
+	auto pos = to_wstring (int (double (g.offset) / all * 100)) + L"%";
+	if (used == all)
+		pos = L"All";
+	else if (g.offset == 0)
+		pos = L"Top";
+	else if (g.offset + used == all)
+		pos = L"Bot";
+
+	if (int (pos.size ()) < unused)
+		mvaddwstr (LINES - 2, COLS - pos.size (), pos.c_str ());
 
 	attrset (g.attrs[g.AT_INPUT]);
 	curs_set (0);
