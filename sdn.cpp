@@ -806,8 +806,7 @@ fun reload (const string &old_cwd) {
 		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
 
 	// We don't show atime, so access and open are merely spam
-	char buf[PATH_MAX];
-	g.inotify_wd = inotify_add_watch (g.inotify_fd, buf,
+	g.inotify_wd = inotify_add_watch (g.inotify_fd, ".",
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
 }
 
