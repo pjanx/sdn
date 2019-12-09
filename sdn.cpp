@@ -834,7 +834,11 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 	default:
 		// ...and make sure of it in the parent as well
 		(void) setpgid (child, child);
-		waitpid (child, &status, 0);
+
+		// We don't provide job control--don't let us hang after ^Z
+		while (waitpid (child, &status, WUNTRACED) > -1 && WIFSTOPPED (status))
+			if (WSTOPSIG (status) == SIGTSTP)
+				kill (child, SIGCONT);
 		tcsetpgrp (STDOUT_FILENO, getpgid (0));
 	}
 
