@@ -48,7 +48,7 @@ To start using this navigator, put the following in your .zshrc:
 ....
 sdn-navigate () {
   # ... possibly zle-line-init
-  eval `sdn`
+  eval "`sdn`"
   [ -z "$cd" ] || cd "$cd"
   [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
   zle reset-prompt
@@ -67,7 +67,7 @@ sdn-navigate () {
   SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
   READLINE_LINE=
 
-  eval `sdn`
+  eval "`sdn`"
   [[ -z "$cd" ]] || cd "$cd"
   [[ -z "$insert" ]] || {
     SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
