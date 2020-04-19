@@ -41,6 +41,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <libgen.h>
+#include <time.h>
 
 #include <sys/inotify.h>
 #include <sys/xattr.h>
@@ -1126,6 +1127,9 @@ fun handle_editor (wint_t c) {
 }
 
 fun handle (wint_t c) -> bool {
+	if (c == WEOF)
+		return false;
+
 	// If an editor is active, let it handle the key instead and eat it
 	if (g.editor) {
 		handle_editor (c);
@@ -1369,10 +1373,27 @@ fun load_colors () {
 	}
 }
 
+fun monotonic_ts_ms () -> int64_t {
+	timespec ts{1, 0};  // A very specific fail-safe value
+	(void) clock_gettime (CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
+
 fun read_key (wint_t &c) -> bool {
+	// XXX: on at least some systems, when run over ssh in a bind handler,
+	// after closing the terminal emulator we receive no fatal signal but our
+	// parent shell gets reparented under init and our stdin gets closed,
+	// so we'd keep getting ERR in an infinite loop, as that is what ncurses
+	// automatically converts EOF into.  The most reasonable way to detect this
+	// situation appears to be via timing.  Checking errno doesn't work and
+	// resetting signal dispositions or the signal mask has no effect.
+	auto start = monotonic_ts_ms ();
 	int res = get_wch (&c);
-	if (res == ERR)
-		return false;
+	if (res == ERR) {
+		c = WEOF;
+		if (monotonic_ts_ms () - start >= 50)
+			return false;
+	}
 
 	wint_t metafied{};
 	if (c == 27 && (res = get_wch (&metafied)) != ERR)
