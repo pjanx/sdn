@@ -24,7 +24,7 @@ Runtime dependencies: ncursesw, libacl
 Unfortunately most LLVM libc++ versions have a bug that crashes 'sdn' on start.
 Use GNU libstdc++ if you're affected.
 
- $ git clone https://github.com/pjanouch/sdn.git
+ $ git clone https://git.janouch.name/p/sdn.git
  $ mkdir sdn/build
  $ cd sdn/build
  $ cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Debug
