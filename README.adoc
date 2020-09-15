@@ -21,8 +21,11 @@ Building
 Build dependencies: CMake and/or make, a C++14 compiler, pkg-config +
 Runtime dependencies: ncursesw, libacl
 
+// Working around libasciidoc's missing support for escaping it like \++
+:doubleplus: ++
+
 Unfortunately most LLVM libc++ versions have a bug that crashes 'sdn' on start.
-Use GNU libstdc++ if you're affected.
+Use GNU libstdc{doubleplus} if you're affected.
 
  $ git clone https://git.janouch.name/p/sdn.git
  $ mkdir sdn/build
