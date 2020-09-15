@@ -104,6 +104,17 @@ input
 Filename colors are taken from the `LS_COLORS` environment variable.
 Run `dircolors` to get some defaults.
 
+Bindings
+--------
+To obtain more vifm-like controls, you may write the following to your
+'~/.config/sdn/bindings' file:
+
+....
+normal h parent
+normal l choose
+normal ? help
+....
+
 Similar software
 ----------------
  * https://elvish.io/ is an entire shell with an integrated ranger-like file
