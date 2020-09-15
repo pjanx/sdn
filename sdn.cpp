@@ -388,8 +388,8 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
 	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
-	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) \
-	XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CHDIR) XX(GO_START) XX(GO_HOME) \
+	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) XX(SCROLL_UP) XX(SCROLL_DOWN) \
+	XX(CHDIR) XX(PARENT) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE)
@@ -1000,6 +1000,8 @@ fun absolutize (const string &abs_base, const string &path) -> string {
 	return abs_base + "/" + path;
 }
 
+/// If `path` is equal to the `current` directory, or lies underneath it,
+/// return it as a relative path
 fun relativize (string current, const string &path) -> string {
 	if (current == path)
 		return ".";
@@ -1216,6 +1218,9 @@ fun handle (wint_t c) -> bool {
 		g.editor_on_confirm = [] {
 			change_dir (to_mb (g.editor_line));
 		};
+		break;
+	case ACTION_PARENT:
+		change_dir ("..");
 		break;
 	case ACTION_GO_START:
 		change_dir (g.start_dir);
