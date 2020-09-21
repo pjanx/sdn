@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2018, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2020, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -427,6 +427,8 @@ static map<wint_t, action> g_normal_actions {
 static map<wint_t, action> g_input_actions {
 	{27, ACTION_INPUT_ABORT}, {CTRL 'g', ACTION_INPUT_ABORT},
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
+	// Sometimes terminfo is wrong, we need to accept both of these
+	{L'\b', ACTION_INPUT_B_DELETE}, {L'\177', ACTION_INPUT_B_DELETE},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
 };
 static const map<string, map<wint_t, action>*> g_binding_contexts {
