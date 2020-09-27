@@ -162,7 +162,7 @@ fun parse_line (istream &is, vector<string> &out) -> bool {
 	enum {TAKE = 1 << 3, PUSH = 1 << 4, STOP = 1 << 5, ERROR = 1 << 6};
 	enum {TWOR = TAKE | WOR};
 
-	// We never transition back to the start state, so it can stay as a noop
+	// We never transition back to the start state, so it can stay as a no-op
 	static char table[STATES][7] = {
 	// state   EOF          SP, TAB     '     #     \     LF           default
 	/* STA */ {ERROR,       DEF,        QUO,  COM,  ESC,  STOP,        TWOR},
