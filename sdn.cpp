@@ -113,6 +113,28 @@ fun split (const string &s, const string &sep) -> vector<string> {
 	vector<string> result; split (s, sep, result); return result;
 }
 
+fun untilde (const string &path) -> string {
+	if (path.empty ())
+		return path;
+
+	string tail = path.substr (1);
+	if (path[0] == '\\')
+		return tail;
+	if (path[1] != '~')
+		return path;
+
+	// If there is something between the ~ and the first / (or the EOS)
+	if (size_t until_slash = tail.find ('/')) {
+		if (const auto *pw = getpwnam (tail.substr (0, until_slash).c_str ()))
+			return pw->pw_dir + tail.substr (until_slash);
+	} else if (const auto *home = getenv ("HOME")) {
+		return home + tail;
+	} else if (const auto *pw = getpwuid (getuid ())) {
+		return pw->pw_dir + tail;
+	}
+	return path;
+}
+
 fun needs_shell_quoting (const string &v) -> bool {
 	// IEEE Std 1003.1 sh + the exclamation mark because of csh/bash
 	// history expansion, implicitly also the NUL character
@@ -1223,7 +1245,7 @@ fun handle (wint_t c) -> bool {
 	case ACTION_CHDIR:
 		g.editor = L"chdir";
 		g.editor_on_confirm = [] {
-			change_dir (to_mb (g.editor_line));
+			change_dir (untilde (to_mb (g.editor_line)));
 		};
 		break;
 	case ACTION_PARENT:
@@ -1233,10 +1255,7 @@ fun handle (wint_t c) -> bool {
 		change_dir (g.start_dir);
 		break;
 	case ACTION_GO_HOME:
-		if (const auto *home = getenv ("HOME"))
-			change_dir (home);
-		else if (const auto *pw = getpwuid (getuid ()))
-			change_dir (pw->pw_dir);
+		change_dir (untilde ("~"));
 		break;
 
 	case ACTION_SEARCH:
