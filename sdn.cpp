@@ -120,11 +120,11 @@ fun untilde (const string &path) -> string {
 	string tail = path.substr (1);
 	if (path[0] == '\\')
 		return tail;
-	if (path[1] != '~')
+	if (path[0] != '~')
 		return path;
 
 	// If there is something between the ~ and the first / (or the EOS)
-	if (size_t until_slash = tail.find ('/')) {
+	if (size_t until_slash = strcspn (tail.c_str (), "/")) {
 		if (const auto *pw = getpwnam (tail.substr (0, until_slash).c_str ()))
 			return pw->pw_dir + tail.substr (until_slash);
 	} else if (const auto *home = getenv ("HOME")) {
