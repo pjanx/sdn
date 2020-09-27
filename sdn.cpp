@@ -1141,6 +1141,10 @@ fun handle (wint_t c) -> bool {
 	}
 
 	const auto &current = g.entries[g.cursor];
+	bool is_directory =
+		S_ISDIR (current.info.st_mode) ||
+		S_ISDIR (current.target_info.st_mode);
+
 	auto i = g_normal_actions.find (c);
 	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_CHOOSE_FULL:
@@ -1152,7 +1156,8 @@ fun handle (wint_t c) -> bool {
 		choose (current);
 		break;
 	case ACTION_VIEW:
-		view (current.filename);
+		// Mimic mc, it does not seem sensible to page directories
+		(is_directory ? change_dir : view) (current.filename);
 		break;
 	case ACTION_EDIT:
 		edit (current.filename);
