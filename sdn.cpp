@@ -243,7 +243,8 @@ fun capitalize (const string &s) -> string {
 	return result;
 }
 
-/// Underlining for teletypes, also imitated in more(1) and less(1)
+/// Underlining for teletypes (also called overstriking),
+/// also imitated in more(1) and less(1)
 fun underline (const string& s) -> string {
 	string result;
 	for (auto c : s)
