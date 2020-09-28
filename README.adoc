@@ -89,10 +89,10 @@ bind -x '"\201": sdn-restore'
 bind '"\eo":"\200\C-m\201"'
 ....
 
-Colors
-------
+Colours
+-------
 Here is an example of a '~/.config/sdn/look' file; the format is similar to
-that of git, only named colors aren't supported:
+that of git, only named colours aren't supported:
 
 ....
 cursor 231 202
@@ -101,7 +101,7 @@ cwd bold
 input
 ....
 
-Filename colors are taken from the `LS_COLORS` environment variable.
+Filename colours are taken from the `LS_COLORS` environment variable.
 Run `dircolors` to get some defaults.
 
 Bindings
@@ -114,6 +114,20 @@ normal h parent
 normal l choose
 normal ? help
 ....
+
+Helper programs
+---------------
+The F3 and F4 keys are normally bound to actions 'view' and 'edit', similarly to
+Norton Commander and other orthodox file managers.  The helper programs used
+here may be changed by setting the PAGER and VISUAL (or EDITOR) environment
+variables.
+
+While it is mostly possible to get 'mcview' working using an invocation like
+`PAGER='mcview -u' sdn`, beware that this helper cannot read files from its
+standard input, nor does it enable overstrike processing by default (F9, could
+be hacked around in 'mc.ext' by turning on the `nroff` switch for a custom file
+extension, just without actually invoking 'nroff'), and thus it can't show the
+program help.  'sdn' is currently optimised for 'less' as the pager.
 
 Similar software
 ----------------
