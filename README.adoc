@@ -52,9 +52,11 @@ To start using this navigator, put the following in your .zshrc:
 ....
 sdn-navigate () {
   # ... possibly zle-line-init
-  eval "`sdn`"
-  [ -z "$cd" ] || cd "$cd"
-  [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
+  while eval "`sdn`"; do
+    [ -z "$cd" ] || cd "$cd"
+    [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
+    [ -z "$helper" ] && break
+    eval "exec </dev/tty; $helper" || break
   zle reset-prompt
   # ... possibly zle-line-finish
 }
@@ -65,19 +67,22 @@ bindkey '\eo' sdn-navigate
 bash
 ----
 Here we can't reset the prompt from within a `bind -x` handler but there is
-an acceptable workaround:
+an acceptable workaround that sadly submits a blank line:
 
 ....
 sdn-navigate () {
   SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
   READLINE_LINE=
 
-  eval "`sdn`"
-  [[ -z "$cd" ]] || cd "$cd"
-  [[ -z "$insert" ]] || {
-    SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
-    ((SDN_P=SDN_P+${#insert}+1))
-  }
+  while eval "`sdn`"; do
+    [[ -z "$cd" ]] || cd "$cd"
+    [[ -z "$insert" ]] || {
+      SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
+      ((SDN_P=SDN_P+${#insert}+1))
+    }
+    [[ -z "$helper" ]] && break
+    eval "$helper" || break
+  done
 }
 sdn-restore () {
   READLINE_LINE=$SDN_L READLINE_POINT=$SDN_P

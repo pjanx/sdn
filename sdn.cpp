@@ -504,6 +504,7 @@ static struct {
 	bool gravity;                       ///< Entries are shoved to the bottom
 	bool reverse_sort;                  ///< Reverse sort
 	bool show_hidden;                   ///< Show hidden files
+	bool ext_helpers;                   ///< Launch helpers externally
 	int max_widths[entry::COLUMNS];     ///< Column widths
 	int sort_column = entry::FILENAME;  ///< Sorting column
 	int sort_flash_ttl;                 ///< Sorting column flash TTL
@@ -512,6 +513,7 @@ static struct {
 	int message_ttl;                    ///< Time to live for the message
 
 	string chosen;                      ///< Chosen item for the command line
+	string ext_helper;                  ///< External helper to run
 	bool no_chdir;                      ///< Do not tell the shell to chdir
 	bool quitting;                      ///< Whether we should quit already
 
@@ -842,8 +844,20 @@ fun show_message (const string &message, int ttl = 30) {
 }
 
 fun run_program (initializer_list<const char*> list, const string &filename) {
-	endwin ();
+	if (g.ext_helpers) {
+		// XXX: this doesn't try them all out, though it shouldn't make any
+		// noticeable difference
+		const char *found = nullptr;
+		for (auto program : list)
+			if ((found = program))
+				break;
+		g.ext_helper = "/bin/sh -c " +
+			shell_escape (string (found) + " " + shell_escape (filename));
+		g.quitting = true;
+		return;
+	}
 
+	endwin ();
 	switch (pid_t child = fork ()) {
 		int status;
 	case -1:
@@ -853,8 +867,8 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 		setpgid (0, 0);
 		tcsetpgrp (STDOUT_FILENO, getpgid (0));
 
-		for (auto pager : list)
-			if (pager) execl ("/bin/sh", "/bin/sh", "-c", (string (pager)
+		for (auto program : list)
+			if (program) execl ("/bin/sh", "/bin/sh", "-c", (string (program)
 				+ " " + shell_escape (filename)).c_str (), NULL);
 		_exit (EXIT_FAILURE);
 	default:
@@ -1570,6 +1584,8 @@ fun load_config () {
 			g.reverse_sort = tokens.at (1) == "1";
 		else if (tokens.front () == "show-hidden"  && tokens.size () > 1)
 			g.show_hidden  = tokens.at (1) == "1";
+		else if (tokens.front () == "ext-helpers"  && tokens.size () > 1)
+			g.ext_helpers  = tokens.at (1) == "1";
 		else if (tokens.front () == "sort-column"  && tokens.size () > 1)
 			g.sort_column  = stoi (tokens.at (1));
 		else if (tokens.front () == "history")
@@ -1586,6 +1602,7 @@ fun save_config () {
 	write_line (*config, {"gravity",      g.gravity      ? "1" : "0"});
 	write_line (*config, {"reverse-sort", g.reverse_sort ? "1" : "0"});
 	write_line (*config, {"show-hidden",  g.show_hidden  ? "1" : "0"});
+	write_line (*config, {"ext-helpers",  g.ext_helpers  ? "1" : "0"});
 
 	write_line (*config, {"sort-column",  to_string (g.sort_column)});
 
@@ -1674,5 +1691,6 @@ int main (int argc, char *argv[]) {
 		cout << "local cd=" << endl;
 
 	cout << "local insert=" << shell_escape (g.chosen) << endl;
+	cout << "local helper=" << shell_escape (g.ext_helper) << endl;
 	return 0;
 }
