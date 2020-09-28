@@ -865,6 +865,12 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 			if (WSTOPSIG (status) == SIGTSTP)
 				kill (child, SIGCONT);
 		tcsetpgrp (STDOUT_FILENO, getpgid (0));
+
+		if (WIFEXITED (status) && WEXITSTATUS (status)) {
+			printf ("Helper returned non-zero exit status %d.  "
+				"Press Enter to continue.\n", WEXITSTATUS (status));
+			string dummy; getline (cin, dummy);
+		}
 	}
 
 	refresh ();
