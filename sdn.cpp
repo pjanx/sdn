@@ -796,7 +796,7 @@ fun reload (const string &old_cwd) {
 	endgrent();
 
 	string anchor;
-	if (!g.entries.empty ())
+	if (g.cwd == old_cwd && !g.entries.empty ())
 		anchor = g.entries[g.cursor].filename;
 
 	auto now = time (NULL); g.now = *localtime (&now);
@@ -814,7 +814,7 @@ fun reload (const string &old_cwd) {
 	sort (begin (g.entries), end (g.entries));
 	g.out_of_date = false;
 
-	if (g.cwd == old_cwd && !anchor.empty ()) {
+	if (!anchor.empty ()) {
 		for (size_t i = 0; i < g.entries.size (); i++)
 			if (g.entries[i].filename == anchor)
 				g.cursor = i;
