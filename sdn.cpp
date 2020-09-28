@@ -784,7 +784,7 @@ fun operator< (const entry &e1, const entry &e2) -> bool {
 	return a.filename < b.filename;
 }
 
-fun reload (const string &old_cwd) {
+fun reload (bool keep_anchor) {
 	g.unames.clear();
 	while (auto *ent = getpwent ())
 		g.unames.emplace (ent->pw_uid, ent->pw_name);
@@ -796,8 +796,8 @@ fun reload (const string &old_cwd) {
 	endgrent();
 
 	string anchor;
-	if (g.cwd == old_cwd && !g.entries.empty ())
-		anchor = g.entries[g.cursor].filename;
+	if (keep_anchor && !g.entries.empty ())
+		anchor = g.entries.at (g.cursor).filename;
 
 	auto now = time (NULL); g.now = *localtime (&now);
 	auto dir = opendir (".");
@@ -1089,12 +1089,13 @@ fun change_dir (const string &path) {
 	auto old_cwd = g.cwd;
 	level last {g.offset, g.cursor, old_cwd, g.entries[g.cursor].filename};
 	g.cwd = full_path;
-	reload (old_cwd);
+	bool same_path = old_cwd == g.cwd;
+	reload (same_path);
 
 	if (is_ancestor_dir (last.path, g.cwd)) {
 		g.levels.push_back (last);
 		g.offset = g.cursor = 0;
-	} else {
+	} else if (!same_path) {
 		pop_levels ();
 	}
 }
@@ -1206,12 +1207,12 @@ fun handle (wint_t c) -> bool {
 	case ACTION_SORT_LEFT:
 		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload (g.cwd);
+		reload (true);
 		break;
 	case ACTION_SORT_RIGHT:
 		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload (g.cwd);
+		reload (true);
 		break;
 
 	case ACTION_UP:
@@ -1284,7 +1285,7 @@ fun handle (wint_t c) -> bool {
 		g.editor_on_confirm = [] {
 			auto mb = to_mb (g.editor_line);
 			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
-			reload (g.cwd);
+			reload (true);
 		};
 		break;
 
@@ -1293,17 +1294,17 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_REVERSE_SORT:
 		g.reverse_sort = !g.reverse_sort;
-		reload (g.cwd);
+		reload (true);
 		break;
 	case ACTION_SHOW_HIDDEN:
 		g.show_hidden = !g.show_hidden;
-		reload (g.cwd);
+		reload (true);
 		break;
 	case ACTION_REDRAW:
 		clear ();
 		break;
 	case ACTION_RELOAD:
-		reload (g.cwd);
+		reload (true);
 		break;
 	default:
 		if (c != KEY (RESIZE) && c != WEOF)
@@ -1635,7 +1636,7 @@ int main (int argc, char *argv[]) {
 
 	load_colors ();
 	g.start_dir = g.cwd = initial_cwd ();
-	reload (g.cwd);
+	reload (false);
 	pop_levels ();
 	update ();
 
