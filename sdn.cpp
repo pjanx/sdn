@@ -879,7 +879,9 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 }
 
 fun view (const string &filename) {
-	run_program ({(const char *) getenv ("PAGER"), "pager", "cat"}, filename);
+	// XXX: we cannot realistically detect that the pager hasn't made a pause
+	// at the end of the file, so we can't ensure all contents have been seen
+	run_program ({(const char *) getenv ("PAGER"), "less", "cat"}, filename);
 }
 
 fun edit (const string &filename) {
@@ -903,7 +905,7 @@ fun run_pager (FILE *contents) {
 		dup2 (fileno (contents), STDIN_FILENO);
 
 		// Behaviour copies man-db's man(1), similar to POSIX man(1)
-		for (auto pager : {(const char *) getenv ("PAGER"), "pager", "cat"})
+		for (auto pager : {(const char *) getenv ("PAGER"), "less", "cat"})
 			if (pager) execl ("/bin/sh", "/bin/sh", "-c", pager, NULL);
 		_exit (EXIT_FAILURE);
 	default:
