@@ -1004,7 +1004,19 @@ fun is_ancestor_dir (const string &ancestor, const string &of) -> bool {
 	return of[ancestor.length ()] == '/' || (ancestor == "/" && ancestor != of);
 }
 
-fun pop_levels () {
+/// If `path` is equal to the `current` directory, or lies underneath it,
+/// return it as a relative path
+fun relativize (string current, const string &path) -> string {
+	if (current == path)
+		return ".";
+	if (current.back () != '/')
+		current += '/';
+	if (!strncmp (current.c_str (), path.c_str (), current.length ()))
+		return path.substr (current.length ());
+	return path;
+}
+
+fun pop_levels (const string& old_cwd) {
 	string anchor; auto i = g.levels.rbegin ();
 	while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
 		if (i->path == g.cwd) {
@@ -1015,6 +1027,13 @@ fun pop_levels () {
 		i++;
 		g.levels.pop_back ();
 	}
+
+	// Don't pick up bullshit from foreign history entries, especially for /
+	if (is_ancestor_dir (g.cwd, old_cwd)) {
+		auto subpath = relativize (g.cwd, old_cwd);
+		anchor = subpath.substr (0, subpath.find ('/'));
+	}
+
 	fix_cursor_and_offset ();
 	if (!anchor.empty () && g.entries[g.cursor].filename != anchor)
 		search (to_wide (anchor));
@@ -1045,18 +1064,6 @@ fun absolutize (const string &abs_base, const string &path) -> string {
 	if (!abs_base.empty () && abs_base.back () == '/')
 		return abs_base + path;
 	return abs_base + "/" + path;
-}
-
-/// If `path` is equal to the `current` directory, or lies underneath it,
-/// return it as a relative path
-fun relativize (string current, const string &path) -> string {
-	if (current == path)
-		return ".";
-	if (current.back () != '/')
-		current += '/';
-	if (!strncmp (current.c_str (), path.c_str (), current.length ()))
-		return path.substr (current.length ());
-	return path;
 }
 
 // Roughly follows the POSIX description of `cd -L` because of symlinks.
@@ -1105,11 +1112,12 @@ fun change_dir (const string &path) {
 	bool same_path = last.path == g.cwd;
 	reload (same_path);
 
-	if (is_ancestor_dir (last.path, g.cwd)) {
-		g.levels.push_back (last);
+	if (!same_path) {
 		g.offset = g.cursor = 0;
-	} else if (!same_path) {
-		pop_levels ();
+		if (is_ancestor_dir (last.path, g.cwd))
+			g.levels.push_back (last);
+		else
+			pop_levels (last.path);
 	}
 }
 
@@ -1653,7 +1661,7 @@ int main (int argc, char *argv[]) {
 	load_colors ();
 	g.start_dir = g.cwd = initial_cwd ();
 	reload (false);
-	pop_levels ();
+	pop_levels (g.cwd);
 	update ();
 
 	// Invoking keypad() earlier would make ncurses flush its output buffer,
