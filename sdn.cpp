@@ -1100,10 +1100,9 @@ fun change_dir (const string &path) {
 		return;
 	}
 
-	auto old_cwd = g.cwd;
-	level last {g.offset, g.cursor, old_cwd, g.entries[g.cursor].filename};
+	level last {g.offset, g.cursor, g.cwd, g.entries[g.cursor].filename};
 	g.cwd = full_path;
-	bool same_path = old_cwd == g.cwd;
+	bool same_path = last.path == g.cwd;
 	reload (same_path);
 
 	if (is_ancestor_dir (last.path, g.cwd)) {
