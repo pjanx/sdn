@@ -87,8 +87,9 @@ bind \eo sdn-navigate
 
 bash
 ~~~~
-Here we can't reset the prompt from within a `bind -x` handler but there is
-an acceptable workaround that sadly submits a blank line:
+Here we can't make the shell update the prompt on directory changes since
+there's no way to invoke `prompt_again()` from a `bind -x` handler but we can
+work around it by submitting a blank line:
 
 ----
 sdn-navigate () {
