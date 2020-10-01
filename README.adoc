@@ -52,7 +52,7 @@ zsh
 ~~~
 To start using this navigator, put the following in your '.zshrc':
 
-....
+----
 sdn-navigate () {
   # ... possibly zle-line-init
   while eval "`sdn`"; do
@@ -65,13 +65,13 @@ sdn-navigate () {
 }
 zle -N sdn-navigate
 bindkey '\eo' sdn-navigate
-....
+----
 
 fish
 ~~~~
 To start using this navigator, put the following in your 'config.fish':
 
-....
+----
 function sdn-navigate
   set --local IFS
   while eval (sdn | string replace -ar '^(.*?)=' 'set --$1 ')
@@ -83,14 +83,14 @@ function sdn-navigate
   commandline --function repaint
 end
 bind \eo sdn-navigate
-....
+----
 
 bash
 ~~~~
 Here we can't reset the prompt from within a `bind -x` handler but there is
 an acceptable workaround that sadly submits a blank line:
 
-....
+----
 sdn-navigate () {
   SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
   READLINE_LINE=
@@ -113,7 +113,7 @@ sdn-restore () {
 bind -x '"\200": sdn-navigate'
 bind -x '"\201": sdn-restore'
 bind '"\eo":"\200\C-m\201"'
-....
+----
 
 Configuration
 -------------
