@@ -45,8 +45,11 @@ Or you can try telling CMake to make a package for you.  For Debian it is:
 There is also a Makefile you can use to quickly build a binary to be copied
 into the PATH of any machine you want to have 'sdn' on.
 
+Integration
+-----------
+
 zsh
----
+~~~
 To start using this navigator, put the following in your '.zshrc':
 
 ....
@@ -65,25 +68,25 @@ bindkey '\eo' sdn-navigate
 ....
 
 fish
-----
+~~~~
 To start using this navigator, put the following in your 'config.fish':
 
 ....
 function sdn-navigate
-	set --local IFS
-	while eval (sdn | string replace -ar '^(.*?)=' 'set --$1 ')
-		test -z "$cd" || cd "$cd"
-		test -z "$insert" || commandline --insert "$insert "
-		test -z "$helper" && break
-		eval $helper || break
-	end
-	commandline --function repaint
+  set --local IFS
+  while eval (sdn | string replace -ar '^(.*?)=' 'set --$1 ')
+    test -z "$cd" || cd "$cd"
+    test -z "$insert" || commandline --insert "$insert "
+    test -z "$helper" && break
+    eval $helper || break
+  end
+  commandline --function repaint
 end
 bind \eo sdn-navigate
 ....
 
 bash
-----
+~~~~
 Here we can't reset the prompt from within a `bind -x` handler but there is
 an acceptable workaround that sadly submits a blank line:
 
@@ -112,8 +115,11 @@ bind -x '"\201": sdn-restore'
 bind '"\eo":"\200\C-m\201"'
 ....
 
+Configuration
+-------------
+
 Colours
--------
+~~~~~~~
 Here is an example of a '~/.config/sdn/look' file; the format is similar to
 that of git, only named colours aren't supported:
 
@@ -128,7 +134,7 @@ Filename colours are taken from the `LS_COLORS` environment variable.
 Run `dircolors` to get some defaults.
 
 Bindings
---------
+~~~~~~~~
 To obtain more vifm-like controls, you may write the following to your
 '~/.config/sdn/bindings' file:
 
@@ -139,7 +145,7 @@ normal ? help
 ....
 
 Helper programs
----------------
+~~~~~~~~~~~~~~~
 The F3 and F4 keys are normally bound to actions 'view' and 'edit', similarly to
 Norton Commander and other orthodox file managers.  The helper programs used
 here may be changed by setting the PAGER and VISUAL (or EDITOR) environment
