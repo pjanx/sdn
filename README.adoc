@@ -47,7 +47,7 @@ into the PATH of any machine you want to have 'sdn' on.
 
 zsh
 ---
-To start using this navigator, put the following in your .zshrc:
+To start using this navigator, put the following in your '.zshrc':
 
 ....
 sdn-navigate () {
@@ -62,6 +62,24 @@ sdn-navigate () {
 }
 zle -N sdn-navigate
 bindkey '\eo' sdn-navigate
+....
+
+fish
+----
+To start using this navigator, put the following in your 'config.fish':
+
+....
+function sdn-navigate
+	set --local IFS
+	while eval (sdn | string replace -ar '^(.*?)=' 'set --$1 ')
+		test -z "$cd" || cd "$cd"
+		test -z "$insert" || commandline --insert "$insert "
+		test -z "$helper" && break
+		eval $helper || break
+	end
+	commandline --function repaint
+end
+bind \eo sdn-navigate
 ....
 
 bash
