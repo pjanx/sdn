@@ -131,7 +131,7 @@ cursor 231 202
 bar 16 255 ul
 cwd bold
 input
-cmdline 102
+cmdline 145
 ....
 
 Filename colours are taken from the `LS_COLORS` environment variable.

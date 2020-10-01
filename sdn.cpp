@@ -495,7 +495,7 @@ struct level {
 };
 
 static struct {
-	wstring cmdline;                    ///< Outer command line
+	ncstring cmdline;                   ///< Outer command line
 	string cwd;                         ///< Current working directory
 	string start_dir;                   ///< Starting directory
 	vector<entry> entries;              ///< Current directory entries
@@ -750,7 +750,7 @@ fun update () {
 		print (apply_attrs (g.message, 0), COLS);
 	} else if (!g.cmdline.empty ()) {
 		move (LINES - 1, 0);
-		print (apply_attrs (g.cmdline, g.attrs[g.AT_CMDLINE]), COLS);
+		print (g.cmdline, COLS);
 	}
 
 	refresh ();
@@ -1361,12 +1361,14 @@ fun load_cmdline (int argc, char *argv[]) {
 	if (argc < 3)
 		return;
 
-	wstring line = to_wide (argv[1]); int point = atoi (argv[2]);
-	if (line.empty () || point < 0 || point > (int) line.length ())
+	wstring line = to_wide (argv[1]); int cursor = atoi (argv[2]);
+	if (line.empty () || cursor < 0 || cursor > (int) line.length ())
 		return;
 
-	std::replace_if (line.begin (), line.end (), iswspace, L' ');
-	g.cmdline = line.substr (0, point) + L"◆" + line.substr (point);
+	std::replace_if (begin (line), end (line), iswspace, L' ');
+	g.cmdline = apply_attrs (line += L' ', g.attrs[g.AT_CMDLINE]);
+	// It is tempting to touch the cchar_t directly, though let's rather not
+	g.cmdline[cursor] = cchar (g.attrs[g.AT_CMDLINE] ^ A_REVERSE, line[cursor]);
 }
 
 fun decode_ansi_sgr (const vector<string> &v) -> chtype {
@@ -1672,8 +1674,8 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
-	load_cmdline (argc, argv);
 	load_colors ();
+	load_cmdline (argc, argv);
 	g.start_dir = g.cwd = initial_cwd ();
 	reload (false);
 	pop_levels (g.cwd);
