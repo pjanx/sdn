@@ -59,7 +59,13 @@ sdn-navigate () {
     [ -z "$cd" ] || cd "$cd"
     [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
     [ -z "$helper" ] && break
+
+    # Workaround for "zsh: suspended (tty output)" when invoking
+    # helpers after the terminal has been resized while running sdn
+    command true
+
     eval "exec </dev/tty; $helper" || break
+  done
   zle reset-prompt
   # ... possibly zle-line-finish
 }
