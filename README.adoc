@@ -55,7 +55,7 @@ To start using this navigator, put the following in your '.zshrc':
 ----
 sdn-navigate () {
   # ... possibly zle-line-init
-  while eval "`sdn`"; do
+  while eval "`sdn "$BUFFER" "$CURSOR"`"; do
     [ -z "$cd" ] || cd "$cd"
     [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
     [ -z "$helper" ] && break
@@ -74,7 +74,9 @@ To start using this navigator, put the following in your 'config.fish':
 ----
 function sdn-navigate
   set --local IFS
-  while eval (sdn | string replace -ar '^(.*?)=' 'set --$1 ')
+  set --local buffer (commandline)
+  set --local cursor (commandline --cursor)
+  while eval (sdn $buffer $cursor | string replace -ar '^(.*?)=' 'set --$1 ')
     test -z "$cd" || cd "$cd"
     test -z "$insert" || commandline --insert "$insert "
     test -z "$helper" && break
@@ -96,7 +98,7 @@ sdn-navigate () {
   SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
   READLINE_LINE=
 
-  while eval "`sdn`"; do
+  while eval "`sdn "$SDN_L" "$SDN_P"`"; do
     [[ -z "$cd" ]] || cd "$cd"
     [[ -z "$insert" ]] || {
       SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
@@ -129,6 +131,7 @@ cursor 231 202
 bar 16 255 ul
 cwd bold
 input
+cmdline 102
 ....
 
 Filename colours are taken from the `LS_COLORS` environment variable.

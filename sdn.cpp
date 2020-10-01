@@ -495,6 +495,7 @@ struct level {
 };
 
 static struct {
+	wstring cmdline;                    ///< Outer command line
 	string cwd;                         ///< Current working directory
 	string start_dir;                   ///< Starting directory
 	vector<entry> entries;              ///< Current directory entries
@@ -525,9 +526,10 @@ static struct {
 	void (*editor_on_change) ();        ///< Callback on editor change
 	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
 
-	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_COUNT };
-	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0};
-	const char *attr_names[AT_COUNT] = {"cursor", "bar", "cwd", "input"};
+	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_CMDLINE, AT_COUNT };
+	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0, 0};
+	const char *attr_names[AT_COUNT] =
+		{"cursor", "bar", "cwd", "input", "cmdline"};
 
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
@@ -746,6 +748,9 @@ fun update () {
 	} else if (!g.message.empty ()) {
 		move (LINES - 1, 0);
 		print (apply_attrs (g.message, 0), COLS);
+	} else if (!g.cmdline.empty ()) {
+		move (LINES - 1, 0);
+		print (apply_attrs (g.cmdline, g.attrs[g.AT_CMDLINE]), COLS);
 	}
 
 	refresh ();
@@ -1352,6 +1357,18 @@ fun inotify_check () {
 		update ();
 }
 
+fun load_cmdline (int argc, char *argv[]) {
+	if (argc < 3)
+		return;
+
+	wstring line = to_wide (argv[1]); int point = atoi (argv[2]);
+	if (line.empty () || point < 0 || point > (int) line.length ())
+		return;
+
+	std::replace_if (line.begin (), line.end (), iswspace, L' ');
+	g.cmdline = line.substr (0, point) + L"◆" + line.substr (point);
+}
+
 fun decode_ansi_sgr (const vector<string> &v) -> chtype {
 	vector<int> args;
 	for (const auto &arg : v) {
@@ -1627,9 +1644,6 @@ fun save_config () {
 }
 
 int main (int argc, char *argv[]) {
-	(void) argc;
-	(void) argv;
-
 	// That bitch zle closes stdin before exec without redirection
 	(void) close (STDIN_FILENO);
 	if (open ("/dev/tty", O_RDWR)) {
@@ -1658,6 +1672,7 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
+	load_cmdline (argc, argv);
 	load_colors ();
 	g.start_dir = g.cwd = initial_cwd ();
 	reload (false);
