@@ -791,6 +791,11 @@ fun operator< (const entry &e1, const entry &e2) -> bool {
 	return a.filename < b.filename;
 }
 
+fun at_cursor () -> const entry & {
+	static entry invalid;
+	return g.cursor >= int (g.entries.size ()) ? invalid : g.entries[g.cursor];
+}
+
 fun reload (bool keep_anchor) {
 	g.unames.clear();
 	while (auto *ent = getpwent ())
@@ -803,8 +808,8 @@ fun reload (bool keep_anchor) {
 	endgrent();
 
 	string anchor;
-	if (keep_anchor && !g.entries.empty ())
-		anchor = g.entries.at (g.cursor).filename;
+	if (keep_anchor)
+		anchor = at_cursor ().filename;
 
 	auto now = time (NULL); g.now = *localtime (&now);
 	auto dir = opendir (".");
@@ -832,8 +837,8 @@ fun reload (bool keep_anchor) {
 			longest = max (longest, compute_width (entry.cols[col]));
 	}
 
-	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
-	g.offset = min (g.offset, int (g.entries.size ()) - 1);
+	g.cursor = max (0, min (g.cursor, int (g.entries.size ()) - 1));
+	g.offset = max (0, min (g.offset, int (g.entries.size ()) - 1));
 
 	if (g.inotify_wd != -1)
 		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
@@ -986,16 +991,16 @@ fun search (const wstring &needle) {
 }
 
 fun fix_cursor_and_offset () {
-	g.cursor = max (g.cursor, 0);
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
+	g.cursor = max (g.cursor, 0);
 
 	// Decrease the offset when more items can suddenly fit
 	int pushable = visible_lines () - (int (g.entries.size ()) - g.offset);
 	g.offset -= max (pushable, 0);
 
 	// Make sure the cursor is visible
-	g.offset = max (g.offset, 0);
 	g.offset = min (g.offset, int (g.entries.size ()) - 1);
+	g.offset = max (g.offset, 0);
 
 	if (g.offset > g.cursor)
 		g.offset = g.cursor;
@@ -1040,7 +1045,7 @@ fun pop_levels (const string& old_cwd) {
 	}
 
 	fix_cursor_and_offset ();
-	if (!anchor.empty () && g.entries[g.cursor].filename != anchor)
+	if (!anchor.empty () && at_cursor ().filename != anchor)
 		search (to_wide (anchor));
 }
 
@@ -1112,7 +1117,7 @@ fun change_dir (const string &path) {
 		return;
 	}
 
-	level last {g.offset, g.cursor, g.cwd, g.entries[g.cursor].filename};
+	level last {g.offset, g.cursor, g.cwd, at_cursor ().filename};
 	g.cwd = full_path;
 	bool same_path = last.path == g.cwd;
 	reload (same_path);
@@ -1128,8 +1133,11 @@ fun change_dir (const string &path) {
 
 // Roughly follows the POSIX description of the PWD environment variable
 fun initial_cwd () -> string {
-	char cwd[4096] = ""; getcwd (cwd, sizeof cwd);
-	const char *pwd = getenv ("PWD");
+	char cwd[4096] = ""; const char *pwd = getenv ("PWD");
+	if (!getcwd (cwd, sizeof cwd)) {
+		show_message (strerror (errno));
+		return pwd;
+	}
 	if (!pwd || pwd[0] != '/' || strlen (pwd) >= PATH_MAX)
 		return cwd;
 
@@ -1198,7 +1206,7 @@ fun handle (wint_t c) -> bool {
 		c = WEOF;
 	}
 
-	const auto &current = g.entries[g.cursor];
+	const auto &current = at_cursor ();
 	bool is_directory =
 		S_ISDIR (current.info.st_mode) ||
 		S_ISDIR (current.target_info.st_mode);
@@ -1300,7 +1308,7 @@ fun handle (wint_t c) -> bool {
 			search (g.editor_line);
 		};
 		g.editor_on_confirm = [] {
-			choose (g.entries[g.cursor]);
+			choose (at_cursor ());
 		};
 		break;
 	case ACTION_RENAME_PREFILL:
@@ -1310,7 +1318,7 @@ fun handle (wint_t c) -> bool {
 		g.editor = L"rename";
 		g.editor_on_confirm = [] {
 			auto mb = to_mb (g.editor_line);
-			rename (g.entries[g.cursor].filename.c_str (), mb.c_str ());
+			rename (at_cursor ().filename.c_str (), mb.c_str ());
 			reload (true);
 		};
 		break;
@@ -1642,7 +1650,7 @@ fun save_config () {
 			to_string (i->offset), to_string (i->cursor), i->filename});
 	write_line (*config, {"history", hostname, ppid, g.cwd,
 		to_string (g.offset), to_string (g.cursor),
-		g.entries[g.cursor].filename});
+		at_cursor ().filename});
 }
 
 int main (int argc, char *argv[]) {
