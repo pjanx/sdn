@@ -1654,7 +1654,8 @@ fun save_config () {
 }
 
 int main (int argc, char *argv[]) {
-	// That bitch zle closes stdin before exec without redirection
+	// zsh before 5.4 may close stdin before exec without redirection,
+	// since then it redirects stdin to /dev/null
 	(void) close (STDIN_FILENO);
 	if (open ("/dev/tty", O_RDWR)) {
 		cerr << "cannot open tty" << endl;

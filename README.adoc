@@ -54,7 +54,7 @@ To start using this navigator, put the following in your '.zshrc':
 
 ----
 sdn-navigate () {
-  # ... possibly zle-line-init
+  # ... possibly zle-line-finish
   while eval "`sdn "$BUFFER" "$CURSOR"`"; do
     [ -z "$cd" ] || cd "$cd"
     [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
@@ -66,8 +66,8 @@ sdn-navigate () {
 
     eval "exec </dev/tty; $helper" || break
   done
+  # ... possibly zle-line-init
   zle reset-prompt
-  # ... possibly zle-line-finish
 }
 zle -N sdn-navigate
 bindkey '\eo' sdn-navigate
