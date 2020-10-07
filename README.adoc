@@ -124,6 +124,35 @@ bind -x '"\201": sdn-restore'
 bind '"\eo":"\200\C-m\201"'
 ----
 
+elvish
+~~~~~~
+To start using this navigator, put the following in your 'rc.elv':
+
+----
+use str
+edit:insert:binding[Alt-o] = {
+  local:reesc = [posix]{ str:replace "'\\''"  "''" $posix }
+  local:posix = [cmd]{ eval ($reesc $cmd)" </dev/tty >/dev/tty 2>&1" }
+
+  # XXX: the -dot is not a stable API, and may hence break soon
+  local:buffer = $edit:current-command
+  local:cursor = (str:to-codepoints $buffer[0..$edit:-dot] | count)
+  local:ns = (ns [&])
+  while ?(eval ($reesc (sdn $buffer $cursor |
+    sed 's/^local //' | slurp)) &ns=$ns) {
+    if (not-eq $ns[cd] "") { cd $ns[cd] }
+    if (not-eq $ns[insert] "") { edit:insert-at-dot $ns[insert]" " }
+    if (or (eq $ns[helper] "") (not ?($posix $ns[helper]))) { break }
+  }
+  edit:redraw &full=$true
+}
+----
+
+This shell is absolutely perverse.  And so is integrating 'sdn' into it because
+it already includes a custom file manager, bound to Ctrl-N (though I find
+the ranger-like interface confusing and resource-demanding).  Version 0.14.1 or
+newer is required.
+
 Configuration
 -------------
 
@@ -167,12 +196,6 @@ standard input, nor does it enable overstrike processing by default (F9, could
 be hacked around in 'mc.ext' by turning on the `nroff` switch for a custom file
 extension, just without actually invoking 'nroff'), and thus it can't show the
 program help.  'sdn' is currently optimised for 'less' as the pager.
-
-Similar software
-----------------
- * https://elvish.io/ is an entire shell with an integrated ranger-like file
-   manager on Ctrl-N (I find this confusing and resource-demanding, preferring
-   to keep closer to "orthodox file managers")
 
 Contributing and Support
 ------------------------
