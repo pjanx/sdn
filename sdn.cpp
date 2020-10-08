@@ -888,7 +888,7 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 		// We don't provide job control--don't let us hang after ^Z
 		while (waitpid (child, &status, WUNTRACED) > -1 && WIFSTOPPED (status))
 			if (WSTOPSIG (status) == SIGTSTP)
-				kill (child, SIGCONT);
+				kill (-child, SIGCONT);
 		tcsetpgrp (STDOUT_FILENO, getpgid (0));
 
 		if (WIFEXITED (status) && WEXITSTATUS (status)) {
