@@ -324,9 +324,9 @@ fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
 }
 
 fun sanitize_char (chtype attrs, wchar_t c) -> ncstring {
-	if (c < 32)
+	if (c < 32 || c == 0x7f)
 		return {cchar (attrs | A_REVERSE, L'^'),
-				cchar (attrs | A_REVERSE, c + 64)};
+				cchar (attrs | A_REVERSE, (c + 64) & 0x7f)};
 	if (!iswprint (c))
 		return {cchar (attrs | A_REVERSE, L'?')};
 	return {cchar (attrs, c)};
@@ -404,9 +404,9 @@ fun decode_attrs (const vector<string> &attrs) -> chtype {
 
 // --- Application -------------------------------------------------------------
 
-enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
+enum { ALT = 1 << 24, SYM = 1 << 25 };   // Outside the range of Unicode
 #define KEY(name) (SYM | KEY_ ## name)
-#define CTRL 31 &
+#define CTRL(char) ((char - 64) & 0x7f)  // 60..7f aren't translated correctly
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
 	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
@@ -433,25 +433,25 @@ static map<wint_t, action> g_normal_actions {
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT},
 	{'<', ACTION_SORT_LEFT}, {'>', ACTION_SORT_RIGHT},
-	{'k', ACTION_UP}, {CTRL 'p', ACTION_UP}, {KEY (UP), ACTION_UP},
-	{'j', ACTION_DOWN}, {CTRL 'n', ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
+	{'k', ACTION_UP}, {CTRL ('P'), ACTION_UP}, {KEY (UP), ACTION_UP},
+	{'j', ACTION_DOWN}, {CTRL ('N'), ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
 	{'G', ACTION_BOTTOM}, {ALT | '>', ACTION_BOTTOM}, {KEY(END), ACTION_BOTTOM},
 	{'H', ACTION_HIGH}, {'M', ACTION_MIDDLE}, {'L', ACTION_LOW},
 	{KEY (PPAGE), ACTION_PAGE_PREVIOUS}, {KEY (NPAGE), ACTION_PAGE_NEXT},
-	{CTRL 'y', ACTION_SCROLL_UP}, {CTRL 'e', ACTION_SCROLL_DOWN},
+	{CTRL ('Y'), ACTION_SCROLL_UP}, {CTRL ('E'), ACTION_SCROLL_DOWN},
 	{'c', ACTION_CHDIR}, {'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
 	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
-	{CTRL 'L', ACTION_REDRAW}, {'r', ACTION_RELOAD},
+	{CTRL ('L'), ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
 static map<wint_t, action> g_input_actions {
-	{27, ACTION_INPUT_ABORT}, {CTRL 'g', ACTION_INPUT_ABORT},
+	{27, ACTION_INPUT_ABORT}, {CTRL ('G'), ACTION_INPUT_ABORT},
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
 	// Sometimes terminfo is wrong, we need to accept both of these
-	{L'\b', ACTION_INPUT_B_DELETE}, {L'\177', ACTION_INPUT_B_DELETE},
+	{L'\b', ACTION_INPUT_B_DELETE}, {CTRL ('?'), ACTION_INPUT_B_DELETE},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
 };
 static const map<string, map<wint_t, action>*> g_binding_contexts {
@@ -950,8 +950,8 @@ fun encode_key (wint_t key) -> string {
 	wchar_t bare = key & ~ALT;
 	if (g.key_to_name.count (bare))
 		encoded.append (capitalize (g.key_to_name.at (bare)));
-	else if (bare < 32)
-		encoded.append ("C-").append ({char (tolower (bare + 64))});
+	else if (bare < 32 || bare == 0x7f)
+		encoded.append ("C-").append ({char (tolower ((bare + 64) & 0x7f))});
 	else
 		encoded.append (to_mb ({bare}));
 	return encoded;
@@ -1501,11 +1501,11 @@ fun parse_key (const string &key_name) -> wint_t {
 	}
 	if (!strncmp (p, "C-", 2)) {
 		p += 2;
-		if (*p < 32) {
+		if (*p < '?' || *p > 'z') {
 			cerr << "bindings: invalid combination: " << key_name << endl;
 			return WEOF;
 		}
-		c |= CTRL *p;
+		c |= CTRL (toupper (*p));
 		p += 1;
 	} else if (g.name_to_key.count (p)) {
 		return c | g.name_to_key.at (p);
