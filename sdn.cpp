@@ -1551,10 +1551,6 @@ fun load_bindings () {
 		learn_named_key (filtered, SYM | kc);
 	}
 
-	auto config = xdg_config_find ("bindings");
-	if (!config)
-		return;
-
 	// Stringization in the preprocessor is a bit limited, we want lisp-case
 	map<string, action> actions;
 	int a = 0;
@@ -1565,6 +1561,10 @@ fun load_bindings () {
 		g.action_names[a] = name;
 		actions[name] = action (a++);
 	}
+
+	auto config = xdg_config_find ("bindings");
+	if (!config)
+		return;
 
 	vector<string> tokens;
 	while (parse_line (*config, tokens)) {
