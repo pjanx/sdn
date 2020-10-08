@@ -64,7 +64,7 @@ sdn-navigate () {
     # helpers after the terminal has been resized while running sdn
     command true
 
-    eval "exec </dev/tty; $helper" || break
+    /bin/sh -c "$helper" </dev/tty || break
   done
   # ... possibly zle-line-init
   zle reset-prompt
@@ -86,7 +86,7 @@ function sdn-navigate
     test -z "$cd" || cd "$cd"
     test -z "$insert" || commandline --insert "$insert "
     test -z "$helper" && break
-    eval $helper || break
+    /bin/sh -c "$helper" || break
   end
   commandline --function repaint
 end
@@ -111,7 +111,7 @@ sdn-navigate () {
       ((SDN_P=SDN_P+${#insert}+1))
     }
     [[ -z "$helper" ]] && break
-    eval "$helper" || break
+    /bin/sh -c "$helper" || break
   done
 }
 sdn-restore () {
@@ -132,7 +132,7 @@ To start using this navigator, put the following in your 'rc.elv':
 use str
 edit:insert:binding[Alt-o] = {
   local:reesc = [posix]{ str:replace "'\\''"  "''" $posix }
-  local:posix = [cmd]{ eval ($reesc $cmd)" </dev/tty >/dev/tty 2>&1" }
+  local:posix = [cmd]{ /bin/sh -c $cmd </dev/tty >/dev/tty 2>&1 }
 
   # XXX: the -dot is not a stable API, and may hence break soon
   local:buffer = $edit:current-command

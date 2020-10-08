@@ -861,8 +861,7 @@ fun run_program (initializer_list<const char*> list, const string &filename) {
 		for (auto program : list)
 			if ((found = program))
 				break;
-		g.ext_helper = "/bin/sh -c " +
-			shell_escape (string (found) + " " + shell_escape (filename));
+		g.ext_helper = found + (" " + shell_escape (filename));
 		g.quitting = true;
 		return;
 	}
