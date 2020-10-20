@@ -73,26 +73,6 @@ zle -N sdn-navigate
 bindkey '\eo' sdn-navigate
 ----
 
-fish
-~~~~
-To start using this navigator, put the following in your 'config.fish':
-
-----
-function sdn-navigate
-  set --local IFS
-  set --local buffer (commandline)
-  set --local cursor (commandline --cursor)
-  while eval (sdn $buffer $cursor | string replace -ar '^(.*?)=' 'set --$1 ')
-    test -z "$cd" || cd "$cd"
-    test -z "$insert" || commandline --insert "$insert "
-    test -z "$helper" && break
-    /bin/sh -c "$helper" || break
-  end
-  commandline --function repaint
-end
-bind \eo sdn-navigate
-----
-
 bash
 ~~~~
 Here we can't make the shell update the prompt on directory changes since
@@ -128,6 +108,26 @@ sdn-restore () {
 bind -x '"\200": sdn-navigate'
 bind -x '"\201": sdn-restore'
 bind '"\eo":"\200\C-m\201"'
+----
+
+fish
+~~~~
+To start using this navigator, put the following in your 'config.fish':
+
+----
+function sdn-navigate
+  set --local IFS
+  set --local buffer (commandline)
+  set --local cursor (commandline --cursor)
+  while eval (sdn $buffer $cursor | string replace -ar '^(.*?)=' 'set --$1 ')
+    test -z "$cd" || cd "$cd"
+    test -z "$insert" || commandline --insert "$insert "
+    test -z "$helper" && break
+    /bin/sh -c "$helper" || break
+  end
+  commandline --function repaint
+end
+bind \eo sdn-navigate
 ----
 
 elvish
