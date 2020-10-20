@@ -100,11 +100,17 @@ there's no way to invoke `prompt_again()` from a `bind -x` handler but we can
 work around it by submitting a blank line:
 
 ----
+sdn-cursor () {
+  if [[ $BASH_VERSINFO -lt 5 ]]
+  then echo -n "$SDN_L" | wc -m
+  else echo "$SDN_P"
+  fi
+}
 sdn-navigate () {
   SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
   READLINE_LINE=
 
-  while eval "`sdn "$SDN_L" "$SDN_P"`"; do
+  while eval "`sdn "$SDN_L" "$(sdn-cursor)"`"; do
     [[ -z "$cd" ]] || cd "$cd"
     [[ -z "$insert" ]] || {
       SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
