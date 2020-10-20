@@ -91,12 +91,12 @@ sdn-navigate () {
   READLINE_LINE=
 
   while eval "`sdn "$SDN_L" "$(sdn-cursor)"`"; do
-    [[ -z "$cd" ]] || cd "$cd"
-    [[ -z "$insert" ]] || {
+    [[ -z $cd ]] || cd "$cd"
+    [[ -z $insert ]] || {
       SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
       ((SDN_P=SDN_P+${#insert}+1))
     }
-    [[ -z "$helper" ]] && break
+    [[ -z $helper ]] && break
     /bin/sh -c "$helper" || break
   done
 }
