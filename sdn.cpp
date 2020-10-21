@@ -1176,6 +1176,14 @@ fun choose (const entry &entry) {
 	}
 }
 
+// Move the cursor in `diff` direction and look for non-combining characters
+fun move_towards_spacing (int diff) -> bool {
+	g.editor_cursor += diff;
+	return g.editor_cursor <= 0
+		|| g.editor_cursor >= int (g.editor_line.length ())
+		|| wcwidth (g.editor_line.at (g.editor_cursor));
+}
+
 fun handle_editor (wint_t c) {
 	auto i = g_input_actions.find (c);
 	switch (i == g_input_actions.end () ? ACTION_NONE : i->second) {
@@ -1197,34 +1205,27 @@ fun handle_editor (wint_t c) {
 		g.editor_cursor = g.editor_line.length ();
 		break;
 	case ACTION_INPUT_BACKWARD:
-		while (g.editor_cursor > 0) {
-			if (--g.editor_cursor <= 0
-			 || wcwidth (g.editor_line.at (g.editor_cursor)))
-				break;
-		}
+		while (g.editor_cursor > 0
+			&& !move_towards_spacing (-1))
+			;
 		break;
 	case ACTION_INPUT_FORWARD:
-		while (g.editor_cursor < int (g.editor_line.length ())) {
-			if (++g.editor_cursor >= int (g.editor_line.length ())
-			 || wcwidth (g.editor_line.at (g.editor_cursor)))
-				break;
-		}
+		while (g.editor_cursor < int (g.editor_line.length ())
+			&& !move_towards_spacing (+1))
+			;
 		break;
 	case ACTION_INPUT_B_DELETE:
-		// Remove the last character including its postfix combining characters
 		while (g.editor_cursor > 0) {
-			auto erased = g.editor_line.at (--g.editor_cursor);
+			auto finished = move_towards_spacing (-1);
 			g.editor_line.erase (g.editor_cursor, 1);
-			if (wcwidth (erased))
+			if (finished)
 				break;
 		}
 		break;
 	case ACTION_INPUT_DELETE:
-		// Remove the next character including its postfix combining characters
 		while (g.editor_cursor < int (g.editor_line.length ())) {
 			g.editor_line.erase (g.editor_cursor, 1);
-			if (g.editor_cursor >= int (g.editor_line.length ())
-			 || wcwidth (g.editor_line.at (g.editor_cursor)))
+			if (move_towards_spacing (0))
 				break;
 		}
 		break;
