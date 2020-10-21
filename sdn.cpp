@@ -415,7 +415,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };   // Outside the range of Unicode
 	XX(CHDIR) XX(PARENT) XX(GO_START) XX(GO_HOME) \
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
-	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE) \
+	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE) XX(INPUT_DELETE) \
 	XX(INPUT_BACKWARD) XX(INPUT_FORWARD) XX(INPUT_BEGINNING) XX(INPUT_END)
 
 #define XX(name) ACTION_ ## name,
@@ -453,7 +453,7 @@ static map<wint_t, action> g_input_actions {
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
 	// Sometimes terminfo is wrong, we need to accept both of these
 	{L'\b', ACTION_INPUT_B_DELETE}, {CTRL ('?'), ACTION_INPUT_B_DELETE},
-	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE},
+	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE}, {KEY (DC), ACTION_INPUT_DELETE},
 	{CTRL ('B'), ACTION_INPUT_BACKWARD}, {KEY (LEFT), ACTION_INPUT_BACKWARD},
 	{CTRL ('F'), ACTION_INPUT_FORWARD}, {KEY (RIGHT), ACTION_INPUT_FORWARD},
 	{CTRL ('A'), ACTION_INPUT_BEGINNING}, {KEY (HOME), ACTION_INPUT_BEGINNING},
@@ -1216,6 +1216,15 @@ fun handle_editor (wint_t c) {
 			auto erased = g.editor_line.at (--g.editor_cursor);
 			g.editor_line.erase (g.editor_cursor, 1);
 			if (wcwidth (erased))
+				break;
+		}
+		break;
+	case ACTION_INPUT_DELETE:
+		// Remove the next character including its postfix combining characters
+		while (g.editor_cursor < int (g.editor_line.length ())) {
+			g.editor_line.erase (g.editor_cursor, 1);
+			if (g.editor_cursor >= int (g.editor_line.length ())
+			 || wcwidth (g.editor_line.at (g.editor_cursor)))
 				break;
 		}
 		break;
