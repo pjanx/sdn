@@ -1186,8 +1186,13 @@ fun handle_editor (wint_t c) {
 		g.editor_on_confirm = nullptr;
 		break;
 	case ACTION_INPUT_B_DELETE:
-		if (g.editor_cursor > 0)
-			g.editor_line.erase (--g.editor_cursor, 1);
+		// Remove the last character including its postfix combining characters
+		while (g.editor_cursor > 0) {
+			auto erased = g.editor_line.at (--g.editor_cursor);
+			g.editor_line.erase (g.editor_cursor, 1);
+			if (wcwidth (erased))
+				break;
+		}
 		break;
 	default:
 		if (c & (ALT | SYM)) {
