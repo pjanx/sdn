@@ -523,6 +523,7 @@ static struct {
 
 	const wchar_t *editor;              ///< Prompt string for editing
 	wstring editor_line;                ///< Current user input
+	int editor_cursor = 0;              ///< Cursor position
 	void (*editor_on_change) ();        ///< Callback on editor change
 	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
 
@@ -742,8 +743,11 @@ fun update () {
 	curs_set (0);
 	if (g.editor) {
 		move (LINES - 1, 0);
-		auto p = apply_attrs (wstring (g.editor) + L": ", 0);
-		move (LINES - 1, print (p + apply_attrs (g.editor_line, 0), COLS - 1));
+		auto prompt = apply_attrs (wstring (g.editor) + L": ", 0);
+		auto line = apply_attrs (g.editor_line, 0);
+		print (prompt + line, COLS - 1);
+		auto start = sanitize (prompt + line.substr (0, g.editor_cursor));
+		move (LINES - 1, compute_width (start));
 		curs_set (1);
 	} else if (!g.message.empty ()) {
 		move (LINES - 1, 0);
@@ -1175,20 +1179,22 @@ fun handle_editor (wint_t c) {
 			g.editor_on_confirm ();
 		// Fall-through
 	case ACTION_INPUT_ABORT:
-		g.editor_line.clear ();
 		g.editor = 0;
+		g.editor_line.clear ();
+		g.editor_cursor = 0;
 		g.editor_on_change = nullptr;
 		g.editor_on_confirm = nullptr;
 		break;
 	case ACTION_INPUT_B_DELETE:
-		if (!g.editor_line.empty ())
-			g.editor_line.erase (g.editor_line.length () - 1);
+		if (g.editor_cursor > 0)
+			g.editor_line.erase (--g.editor_cursor, 1);
 		break;
 	default:
 		if (c & (ALT | SYM)) {
 			beep ();
 		} else {
-			g.editor_line += c;
+			g.editor_line.insert (g.editor_cursor, 1, c);
+			g.editor_cursor++;
 			if (g.editor_on_change)
 				g.editor_on_change ();
 		}
@@ -1312,6 +1318,7 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
+		g.editor_cursor = g.editor_line.length ();
 		// Fall-through
 	case ACTION_RENAME:
 		g.editor = L"rename";
