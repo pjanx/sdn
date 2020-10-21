@@ -1717,6 +1717,7 @@ int main (int argc, char *argv[]) {
 	// We can't portably create a standard stream from an FD, so modify the FD
 	dup2 (output_fd, STDOUT_FILENO);
 
+	// TODO: avoid printing any of this unless the SDN envvar is set
 	if (g.cwd != g.start_dir && !g.no_chdir)
 		cout << "local cd=" << shell_escape (g.cwd) << endl;
 	else

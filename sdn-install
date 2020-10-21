@@ -1,0 +1,176 @@
+#!/bin/sh -e
+# sdn-install: integrate sdn with the shell, binding to M-o
+# vim: set sw=2 ts=2 sts=2 et tw=80:
+
+zsh() {
+cat <<'EOF'
+sdn-navigate () {
+  # ... possibly zle-line-finish
+  while eval "`SDN=1 sdn "$BUFFER" "$CURSOR"`"
+  do
+    [ -z "$cd" ] || cd "$cd"
+    [ -z "$insert" ] || LBUFFER="$LBUFFER$insert "
+    [ -z "$helper" ] && break
+
+    # Workaround for "zsh: suspended (tty output)" when invoking
+    # helpers after the terminal has been resized while running sdn
+    command true
+
+    /bin/sh -c "$helper" </dev/tty || break
+  done
+  # ... possibly zle-line-init
+  zle reset-prompt
+}
+
+zle -N sdn-navigate
+bindkey '\eo' sdn-navigate
+EOF
+}
+
+bash() {
+cat <<'EOF'
+# We can't make the shell update the prompt on directory changes
+# since there's no way to invoke `prompt_again()` from a `bind -x`
+# handler but we can work around it by submitting a blank line.
+sdn-cursor () {
+  if [[ $BASH_VERSINFO -lt 5 ]]
+  then echo -n "$SDN_L" | wc -m
+  else echo "$SDN_P"
+  fi
+}
+
+sdn-navigate () {
+  SDN_L=$READLINE_LINE SDN_P=$READLINE_POINT
+  READLINE_LINE=
+
+  while eval "`SDN=1 sdn "$SDN_L" "$(sdn-cursor)"`"
+  do
+    [[ -z $cd ]] || cd "$cd"
+    [[ -z $insert ]] || {
+      SDN_L="${SDN_L:0:$SDN_P}$insert ${SDN_L:$SDN_P}"
+      ((SDN_P=SDN_P+${#insert}+1))
+    }
+    [[ -z $helper ]] && break
+    /bin/sh -c "$helper" || break
+  done
+}
+
+sdn-restore () {
+  READLINE_LINE=$SDN_L READLINE_POINT=$SDN_P
+  unset SDN_L SDN_P
+}
+
+bind -x '"\200": sdn-navigate'
+bind -x '"\201": sdn-restore'
+bind '"\eo":"\200\C-m\201"'
+EOF
+}
+
+fish() {
+cat <<'EOF'
+function sdn-navigate
+  set --local IFS
+  set --local buffer (commandline)
+  set --local cursor (commandline --cursor)
+  while eval (SDN=1 sdn $buffer $cursor | \
+    string replace -ar '^(.*?)=' 'set --$1 ')
+    test -z "$cd" || cd "$cd"
+    test -z "$insert" || commandline --insert "$insert "
+    test -z "$helper" && break
+    /bin/sh -c "$helper" || break
+  end
+  commandline --function repaint
+end
+bind \eo sdn-navigate
+EOF
+}
+
+elvish() {
+cat <<'EOF'
+edit:insert:binding[Alt-o] = {
+  use str
+  local:reesc = [posix]{ str:replace "'\\''"  "''" $posix }
+  local:posix = [cmd]{ /bin/sh -c $cmd </dev/tty >/dev/tty 2>&1 }
+
+  # XXX: the -dot is not a stable API, and may hence break soon
+  local:buffer = $edit:current-command
+  local:cursor = (str:to-codepoints $buffer[0..$edit:-dot] | count)
+  local:ns = (ns [&])
+  while ?(eval ($reesc (E:SDN=1 sdn $buffer $cursor |
+    sed 's/^local //' | slurp)) &ns=$ns) {
+    if (not-eq $ns[cd] "") { cd $ns[cd] }
+    if (not-eq $ns[insert] "") { edit:insert-at-dot $ns[insert]" " }
+    if (or (eq $ns[helper] "") (not ?($posix $ns[helper]))) { break }
+  }
+  edit:redraw &full=$true
+}
+EOF
+}
+
+shell= path=
+while getopts s:f:h opt
+do
+  case $opt in
+  s) shell=$OPTARG;;
+  f) path=$OPTARG;;
+  *) echo "Usage: $0 [-s SHELL] [-f RCPATH | -]"; exit 2
+  esac
+done
+
+# Figure out the shell to integrate with
+login=$(basename "$SHELL")
+actual=$(ps -p $$ -o ppid= | xargs ps -o comm= -p)
+if [ -z "$shell" ]
+then
+  if [ "$login" != "$actual" ]
+  then
+    echo "Conflict between login ($actual) and invoking ($actual) shell."
+    echo "Specify the shell with the -s option."
+    exit 1
+  fi
+  shell=$actual
+fi
+
+# Figure out the default initialisation file
+case "$shell" in
+zsh|bash)
+  rc=~/.${shell}rc;;
+fish)
+  rc=${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/sdn.fish;;
+elvish)
+  rc=~/.elvish/rc.elv;;
+*)
+  echo "$shell is not supported."
+  exit 1
+esac
+
+# Just print out the snippet if requested
+if [ "$path" = "-" ]
+then
+  $shell
+  exit 0
+fi
+
+# Finally append to or update the appropriate file
+b="# sdn-install begin"
+e="# sdn-install end"
+[ -z "$path" ] && path=$rc
+mkdir -p "$(dirname "$path")"
+touch "$path"
+
+if ! grep -q "^$b" "$path" 2>/dev/null || ! grep -q "^$e" "$path" 2>/dev/null
+then
+  printf "\n$b\n%s\n$e\n" "$($shell)" >> "$path"
+  echo "The snippet has been added to $path"
+  exit 0
+fi
+
+# POSIX-compliant in-place sed, trying to retain permissions here
+temp=$path.sdn.new
+cp -p -- "$path" "$temp"
+sed < "$path" > "$temp" "/^$b/,/^$e/c\\
+$b\\
+$($shell | sed 's/\\/&&/g; s/$/\\/')
+$e"
+mv -- "$temp" "$path"
+echo "The snippet in $path has been updated."
