@@ -5,7 +5,7 @@
 zsh() {
 cat <<'EOF'
 sdn-navigate () {
-  # ... possibly zle-line-finish
+  # optionally: zle zle-line-finish
   while eval "`SDN=1 sdn "$BUFFER" "$CURSOR"`"
   do
     [ -z "$cd" ] || cd "$cd"
@@ -18,7 +18,7 @@ sdn-navigate () {
 
     /bin/sh -c "$helper" </dev/tty || break
   done
-  # ... possibly zle-line-init
+  # optionally: zle zle-line-init
   zle reset-prompt
 }
 
@@ -124,7 +124,7 @@ if [ -z "$shell" ]
 then
   if [ "$login" != "$actual" ]
   then
-    echo "Conflict between login ($actual) and invoking ($actual) shell."
+    echo "Conflict between login ($login) and invoking ($actual) shell."
     echo "Specify the shell with the -s option."
     exit 1
   fi

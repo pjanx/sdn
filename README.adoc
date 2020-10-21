@@ -48,7 +48,7 @@ into the PATH of any machine you want to have 'sdn' on.
 Integration
 -----------
 The package contains an installation script called 'sdn-install' which will bind
-'sdn' to M-o in your shell's initialisation file.  The supported shells are:
+'sdn' to Alt-o in your shell's initialisation file.  The supported shells are:
 
  - *zsh*: works well
  - *bash*: minor issue: exiting the navigator confirms an empty prompt
