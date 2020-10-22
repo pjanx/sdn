@@ -455,7 +455,7 @@ static map<wint_t, action> g_input_actions {
 	// Sometimes terminfo is wrong, we need to accept both of these
 	{L'\b', ACTION_INPUT_B_DELETE}, {CTRL ('?'), ACTION_INPUT_B_DELETE},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE}, {KEY (DC), ACTION_INPUT_DELETE},
-	{CTRL ('U'), ACTION_INPUT_B_KILL_LINE},
+	{CTRL ('D'), ACTION_INPUT_DELETE}, {CTRL ('U'), ACTION_INPUT_B_KILL_LINE},
 	{CTRL ('K'), ACTION_INPUT_KILL_LINE},
 	{CTRL ('V'), ACTION_INPUT_QUOTED_INSERT},
 	{CTRL ('B'), ACTION_INPUT_BACKWARD}, {KEY (LEFT), ACTION_INPUT_BACKWARD},
