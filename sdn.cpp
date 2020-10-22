@@ -416,6 +416,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };   // Outside the range of Unicode
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE) XX(INPUT_DELETE) \
+	XX(INPUT_B_KILL_LINE) XX(INPUT_KILL_LINE) \
 	XX(INPUT_BACKWARD) XX(INPUT_FORWARD) XX(INPUT_BEGINNING) XX(INPUT_END)
 
 #define XX(name) ACTION_ ## name,
@@ -454,6 +455,8 @@ static map<wint_t, action> g_input_actions {
 	// Sometimes terminfo is wrong, we need to accept both of these
 	{L'\b', ACTION_INPUT_B_DELETE}, {CTRL ('?'), ACTION_INPUT_B_DELETE},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE}, {KEY (DC), ACTION_INPUT_DELETE},
+	{CTRL ('U'), ACTION_INPUT_B_KILL_LINE},
+	{CTRL ('K'), ACTION_INPUT_KILL_LINE},
 	{CTRL ('B'), ACTION_INPUT_BACKWARD}, {KEY (LEFT), ACTION_INPUT_BACKWARD},
 	{CTRL ('F'), ACTION_INPUT_FORWARD}, {KEY (RIGHT), ACTION_INPUT_FORWARD},
 	{CTRL ('A'), ACTION_INPUT_BEGINNING}, {KEY (HOME), ACTION_INPUT_BEGINNING},
@@ -1228,6 +1231,13 @@ fun handle_editor (wint_t c) {
 			if (move_towards_spacing (0))
 				break;
 		}
+		break;
+	case ACTION_INPUT_B_KILL_LINE:
+		g.editor_line.erase (0, g.editor_cursor);
+		g.editor_cursor = 0;
+		break;
+	case ACTION_INPUT_KILL_LINE:
+		g.editor_line.erase (g.editor_cursor);
 		break;
 	default:
 		if (c & (ALT | SYM)) {
