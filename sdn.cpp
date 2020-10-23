@@ -353,13 +353,6 @@ fun print (const ncstring &nc, int limit) -> int {
 	return total_width;
 }
 
-fun compute_width (const wstring &w) -> int {
-	int total = 0;
-	for (const auto &c : w)
-		total += wcwidth (c);
-	return total;
-}
-
 fun compute_width (const ncstring &nc) -> int {
 	int total = 0;
 	for (const auto &c : nc)
