@@ -979,11 +979,13 @@ fun show_help () {
 	for (const auto &kv : g_binding_contexts) {
 		fprintf (contents, "%s\n",
 			underline (capitalize (kv.first + " key bindings")).c_str ());
-		for (const auto &kv : *kv.second) {
-			auto key = encode_key (kv.first);
-			key.append (max (0, 10 - compute_width (to_wide (key))), ' ');
-			fprintf (contents, "%s %s\n",
-				key.c_str (), g.action_names[kv.second].c_str ());
+		map<action, string> agg;
+		for (const auto &kv : *kv.second)
+			agg[kv.second] += encode_key (kv.first) + " ";
+		for (const auto &kv : agg) {
+			auto action = g.action_names[kv.first];
+			action.append (max (0, 20 - int (action.length ())), ' ');
+			fprintf (contents, "%s %s\n", action.c_str (), kv.second.c_str ());
 		}
 		fprintf (contents, "\n");
 	}
