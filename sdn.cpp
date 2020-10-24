@@ -1277,6 +1277,7 @@ fun handle (wint_t c) -> bool {
 	auto i = g_normal_actions.find (c);
 	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_CHOOSE_FULL:
+		// FIXME: in the root directory, this inserts //item
 		g.chosen = g.cwd + "/" + current.filename;
 		g.no_chdir = true;
 		g.quitting = true;
