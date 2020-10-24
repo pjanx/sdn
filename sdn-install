@@ -60,9 +60,10 @@ sdn-restore () {
   unset SDN_L SDN_P
 }
 
-bind -x '"\200": sdn-navigate'
-bind -x '"\201": sdn-restore'
-bind '"\eo":"\200\C-m\201"'
+# These never occur in UTF-8: \300-\301 \365-\367 \370-\377
+bind -x '"\300": sdn-navigate'
+bind -x '"\301": sdn-restore'
+bind '"\eo": "\300\C-m\301"'
 EOF
 }
 
