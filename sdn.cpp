@@ -423,7 +423,8 @@ static const char *g_action_names[] = {ACTIONS(XX)};
 static map<wint_t, action> g_normal_actions {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
 	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
-	{KEY (F (3)), ACTION_VIEW}, {KEY (F (4)), ACTION_EDIT}, {'h', ACTION_HELP},
+	{KEY (F (1)), ACTION_HELP}, {'h', ACTION_HELP},
+	{KEY (F (3)), ACTION_VIEW}, {KEY (F (4)), ACTION_EDIT},
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT},
