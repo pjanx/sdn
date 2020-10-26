@@ -1,0 +1,30 @@
+.Dd October 26, 2020
+.Dt SDN-INSTALL 1
+.Os Linux
+.Sh NAME
+.Nm sdn-install
+.Nd integrate sdn with the shell
+.Sh SYNOPSIS
+.Nm sdn-install
+.Op Fl s Ar shell
+.Op Fl p Ar - | rcpath
+.Sh DESCRIPTION
+.Nm
+integrates
+.Xr sdn 1
+with your shell, binding it to M-o.  If the navigator has already been
+integrated, it updates the snippet in-place.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl p Ar -
+Merely print the integration snippet for the appropriate shell to the standard
+output, not changing anything.
+.It Fl p Ar rcpath
+Install the integration snippet into a different shell initialization file than
+your user's default one.
+.It Fl s Ar shell
+If you want to integrate
+.Xr sdn 1
+with a different shell than you're running, use this option to specify it.
+.El
