@@ -1720,6 +1720,11 @@ fun save_config () {
 }
 
 int main (int argc, char *argv[]) {
+	if (argc == 2 && string (argv[1]) == "--version") {
+		cout << PROJECT_NAME << " " << PROJECT_VERSION << endl;
+		return 0;
+	}
+
 	// zsh before 5.4 may close stdin before exec without redirection,
 	// since then it redirects stdin to /dev/null
 	(void) close (STDIN_FILENO);
