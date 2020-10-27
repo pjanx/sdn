@@ -50,8 +50,12 @@ Or you can try telling CMake to make a package for you.  For Debian it is:
 There is also a Makefile you can use to quickly build a binary to be copied
 into the PATH of any machine you want to have 'sdn' on.
 
+Configuration
+-------------
+For a slightly more technical explanation please refer to manual pages.
+
 Integration
------------
+~~~~~~~~~~~
 The package contains an installation script called 'sdn-install' which will bind
 'sdn' to Alt-o in your shell's initialisation file.  The supported shells are:
 
@@ -63,9 +67,6 @@ The package contains an installation script called 'sdn-install' which will bind
 elvish is absolutely perverse.  And so is integrating 'sdn' into it because it
 already includes a custom file manager, bound to Ctrl-N (though I find the
 ranger-like interface confusing and resource-demanding).
-
-Configuration
--------------
 
 Colours
 ~~~~~~~
@@ -91,7 +92,6 @@ To obtain more vifm-like controls, you may write the following to your
 ....
 normal h parent
 normal l choose
-normal ? help
 ....
 
 Helper programs
