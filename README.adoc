@@ -16,6 +16,11 @@ approach here, and the end result is very friendly to tinkering.
 
 image::sdn.png[align="center"]
 
+Packages
+--------
+Regular releases are sporadic.  git master should be stable enough.  You can get
+a package with the latest development version from Archlinux's AUR.
+
 Building
 --------
 Build dependencies: CMake and/or make, a C++14 compiler, pkg-config +
@@ -54,7 +59,7 @@ The package contains an installation script called 'sdn-install' which will bind
  - *bash*: minor issue: exiting the navigator confirms an empty prompt
  - *fish*: works well
  - *elvish*: version 0.14.1 and above, an unstable API is used, works well
-
++
 elvish is absolutely perverse.  And so is integrating 'sdn' into it because it
 already includes a custom file manager, bound to Ctrl-N (though I find the
 ranger-like interface confusing and resource-demanding).
