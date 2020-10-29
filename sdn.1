@@ -1,3 +1,4 @@
+\" https://mandoc.bsd.lv/man/roff.7.html#Sentence_Spacing
 .Dd October 27, 2020
 .Dt SDN 1
 .Os Linux
@@ -12,7 +13,8 @@
 .Sh DESCRIPTION
 .Nm
 is a simple directory navigator that you can launch while editing shell
-commands.  Use the
+commands.
+Use the
 .Xr sdn-install 1
 script to integrate it with your shell, then invoke it at any time with M-o.
 .Pp
@@ -20,7 +22,8 @@ Press F1 to get a list of active key bindings and their assigned actions,
 grouped by their contexts.
 .Pp
 Program arguments are only used by integration snippets to forward the parent
-shell's command line.  The
+shell's command line.
+The
 .Ar point
 is given in terms of characters.
 .Sh OPTIONS
@@ -28,9 +31,10 @@ While some behaviour can be toggled from within the program, some can only be
 changed by modifying configuration files manually.
 .Pp
 The files follow a simple syntax derived from the Bourne shell: each option is
-on its own line, with words separated by linear whitespace.  Comments start with
-a hash (#) and continue until the end of the line.  All special characters may
-be quoted using either a backslash or single-quoted strings.
+on its own line, with words separated by linear whitespace.
+Comments start with a hash (#) and continue until the end of the line.
+All special characters may be quoted using either a backslash or single-quoted
+strings.
 .Pp
 The options and the default key bindings controlling them are as follows:
 .Bl -tag
@@ -46,9 +50,9 @@ If non-zero, the order of entries is reversed.
 .It show-hidden Em bool No (M-.)
 If non-zero, filenames beginning with a full stop are shown.
 .It ext-helpers Em bool
-If non-zero, viewers and editors are launched from the parent shell.  This way
-you can suspend them and use job control features of the shell.  However it
-also enforces any pending change to the shell's working directory.
+If non-zero, viewers and editors are launched from the parent shell.
+This way you can suspend them and use job control features of the shell.
+However it also enforces any pending change to the shell's working directory.
 .It sort-column Em number No (< >)
 The zero-based index of the
 .Ql full-view
@@ -57,18 +61,20 @@ column that entries are ordered by.
 .Sh ENVIRONMENT
 .Bl -tag -width 15n
 .It Ev LS_COLORS
-Used to retrieve filename colours.  The format is described in
+Used to retrieve filename colours.
+The format is described in
 .Xr dir_colors 5
 and you can use the
 .Xr dircolors 1
 utility to initialize this variable.
 .It Ev PAGER
 The viewer program to be launched by the F3 key binding as well as to show
-the internal help message.  If none is set, it defaults to
+the internal help message.
+If none is set, it defaults to
 .Xr less 1 .
 .It Ev VISUAL , Ev EDITOR
-The editor program to be launched by the F4 key binding.  If neither variable
-is set, it defaults to
+The editor program to be launched by the F4 key binding.
+If neither variable is set, it defaults to
 .Xr vi 1 .
 .El
 .Sh FILES
@@ -84,8 +90,9 @@ Redefine terminal attributes for UI elements.
 .Ss Pa bindings
 Key names or combinations follow the Emacs syntax for Control and Meta prefixes
 and
-.Xr terminfo 5 names are used for special keys.  To obtain more vifm-like
-controls and Windows-like quit abilities:
+.Xr terminfo 5
+names are used for special keys.
+To obtain more vifm-like controls and Windows-like quit abilities:
 .Bd -literal -offset indent
 normal h parent
 normal l choose
@@ -93,8 +100,10 @@ normal M-f4 quit
 .Ed
 .Ss Pa look
 Terminal attributes are accepted in a format similar to that of
-.Xr git 1 , only named colours aren't supported.  For a black-on-white terminal
-supporting 256 colours, a theme such as the following may work:
+.Xr git 1 ,
+only named colours aren't supported.
+For a black-on-white terminal supporting 256 colours, a theme such as the
+following may work:
 .Bd -literal -offset indent
 cursor 231 202
 bar 16 255 ul
