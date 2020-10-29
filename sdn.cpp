@@ -42,6 +42,7 @@
 #include <grp.h>
 #include <libgen.h>
 #include <time.h>
+#include <signal.h>
 
 #include <sys/inotify.h>
 #include <sys/xattr.h>
