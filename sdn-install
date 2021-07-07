@@ -94,6 +94,7 @@ edit:insert:binding[Alt-o] = {
   local:posix = [cmd]{ /bin/sh -c $cmd </dev/tty >/dev/tty 2>&1 }
 
   # XXX: the -dot is not a stable API, and may hence break soon
+  # https://elv.sh/ref/builtin.html#do-not-use-functions-and-variables
   local:buffer = $edit:current-command
   local:cursor = (str:to-codepoints $buffer[0..$edit:-dot] | count)
   local:ns = (ns [&])
