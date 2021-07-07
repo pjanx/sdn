@@ -1,8 +1,8 @@
 .POSIX:
 SHELL = /bin/sh
 CXXFLAGS = -g -std=c++14 -Wall -Wextra -pedantic
-CPPFLAGS = `sed -ne 's/^project (\([^ )]*\).*/-DPROJECT_NAME="\1"/p' \
-	-e 's/^set (version \([^ )]*\).*/-DPROJECT_VERSION="\1"/p' CMakeLists.txt`
+CPPFLAGS = `sed -ne '/^project (\([^ )]*\) VERSION \([^ )]*\).*/ \
+	s//-DPROJECT_NAME="\1" -DPROJECT_VERSION="\2"/p' CMakeLists.txt`
 
 sdn: sdn.cpp CMakeLists.txt
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o sdn \
