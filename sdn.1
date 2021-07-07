@@ -98,6 +98,20 @@ normal h parent
 normal l choose
 normal M-f4 quit
 .Ed
+.Pp
+Midnight Commander binds the same traversal actions to sequences normally
+unknown to ncurses, due to them being missing from terminfo.
+You'll need to define them manually to match your terminal.
+For rxvt, that would be:
+.Bd -literal -offset indent
+define C-ppage ^[[5^
+define C-npage ^[[6^
+normal C-ppage parent
+normal C-npage choose
+.Ed
+.Pp
+Escape characters must be inserted verbatim, e.g., by pressing C-v ESC in vi,
+or C-q ESC in Emacs.
 .Ss Pa look
 Terminal attributes are accepted in a format similar to that of
 .Xr git-config 1 ,

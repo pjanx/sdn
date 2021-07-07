@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2020, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2021, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -544,6 +544,7 @@ static struct {
 
 	map<string, wint_t, stringcaseless> name_to_key;
 	map<wint_t, string> key_to_name;
+	map<string, wint_t> custom_keys;
 	string action_names[ACTION_COUNT];  ///< Stylized action names
 
 	// Refreshed by reload():
@@ -1566,7 +1567,9 @@ fun parse_key (const string &key_name) -> wint_t {
 		c |= ALT;
 		p += 2;
 	}
-	if (!strncmp (p, "C-", 2)) {
+	if (g.name_to_key.count (p)) {
+		return c | g.name_to_key.at (p);
+	} else if (!strncmp (p, "C-", 2)) {
 		p += 2;
 		if (*p < '?' || *p > 'z') {
 			cerr << "bindings: invalid combination: " << key_name << endl;
@@ -1574,8 +1577,6 @@ fun parse_key (const string &key_name) -> wint_t {
 		}
 		c |= CTRL (toupper (*p));
 		p += 1;
-	} else if (g.name_to_key.count (p)) {
-		return c | g.name_to_key.at (p);
 	} else {
 		wchar_t w; mbstate_t mb {};
 		auto len = strlen (p) + 1, res = mbrtowc (&w, p, len, &mb);
@@ -1604,7 +1605,9 @@ fun learn_named_key (const string &name, wint_t key) {
 fun load_bindings () {
 	learn_named_key ("space", ' ');
 	learn_named_key ("escape", 0x1b);
-	for (int kc = KEY_MIN; kc < KEY_MAX; kc++) {
+
+	int kc = 0;
+	for (kc = KEY_MIN; kc <= KEY_MAX; kc++) {
 		const char *name = keyname (kc);
 		if (!name)
 			continue;
@@ -1638,11 +1641,18 @@ fun load_bindings () {
 		if (tokens.empty ())
 			continue;
 		if (tokens.size () < 3) {
-			cerr << "bindings: expected: context binding action";
+			cerr << "bindings: expected: define name key-sequence"
+				" | context binding action";
 			continue;
 		}
 
 		auto context = tokens[0], key_name = tokens[1], action = tokens[2];
+		if (context == "define") {
+			// We haven't run initscr() yet, so define_key() would fail here
+			learn_named_key (key_name, SYM | (g.custom_keys[action] = ++kc));
+			continue;
+		}
+
 		auto m = g_binding_contexts.find (context);
 		if (m == g_binding_contexts.end ()) {
 			cerr << "bindings: invalid context: " << context << endl;
@@ -1754,6 +1764,8 @@ int main (int argc, char *argv[]) {
 		cerr << "cannot initialize screen" << endl;
 		return 1;
 	}
+	for (const auto &definition_kc : g.custom_keys)
+		define_key (definition_kc.first.c_str (), definition_kc.second);
 
 	load_colors ();
 	load_cmdline (argc, argv);
