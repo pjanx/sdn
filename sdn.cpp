@@ -398,9 +398,9 @@ fun decode_attrs (const vector<string> &attrs) -> chtype {
 
 // --- Application -------------------------------------------------------------
 
-enum { ALT = 1 << 24, SYM = 1 << 25 };   // Outside the range of Unicode
+enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define KEY(name) (SYM | KEY_ ## name)
-#define CTRL(char) ((char - 64) & 0x7f)  // 60..7f aren't translated correctly
+#define CTRL(char) ((char) == '?' ? 0x7f : (char) & 0x1f)
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
 	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
@@ -1571,11 +1571,11 @@ fun parse_key (const string &key_name) -> wint_t {
 		return c | g.name_to_key.at (p);
 	} else if (!strncmp (p, "C-", 2)) {
 		p += 2;
-		if (*p < '?' || *p > 'z') {
+		if (*p < '?' || *p > '~') {
 			cerr << "bindings: invalid combination: " << key_name << endl;
 			return WEOF;
 		}
-		c |= CTRL (toupper (*p));
+		c |= CTRL (*p);
 		p += 1;
 	} else {
 		wchar_t w; mbstate_t mb {};
