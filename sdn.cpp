@@ -527,16 +527,17 @@ static struct {
 	bool out_of_date;                   ///< Entries may be out of date
 
 	const wchar_t *editor;              ///< Prompt string for editing
+	wstring editor_info;                ///< Right-side prompt while editing
 	wstring editor_line;                ///< Current user input
 	int editor_cursor = 0;              ///< Cursor position
 	bool editor_inserting;              ///< Inserting a literal character
 	void (*editor_on_change) ();        ///< Callback on editor change
 	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
 
-	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_CMDLINE, AT_COUNT };
-	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0, 0};
+	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_INFO, AT_CMDLINE, AT_COUNT };
+	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0, A_ITALIC, 0};
 	const char *attr_names[AT_COUNT] =
-		{"cursor", "bar", "cwd", "input", "cmdline"};
+		{"cursor", "bar", "cwd", "input", "info", "cmdline"};
 
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
@@ -750,9 +751,16 @@ fun update () {
 	curs_set (0);
 	if (g.editor) {
 		move (LINES - 1, 0);
-		auto prompt = apply_attrs (wstring (g.editor) + L": ", 0);
-		auto line = apply_attrs (g.editor_line, 0);
-		print (prompt + line, COLS - 1);
+		auto prompt = apply_attrs (wstring (g.editor) + L": ", 0),
+			line = apply_attrs (g.editor_line, 0),
+			info = apply_attrs (g.editor_info, g.attrs[g.AT_INFO]);
+
+		auto info_width = compute_width (info);
+		if (print (prompt + line, COLS - 1) < COLS - info_width) {
+			move (LINES - 1, COLS - info_width);
+			print (info, info_width);
+		}
+
 		auto start = sanitize (prompt + line.substr (0, g.editor_cursor));
 		move (LINES - 1, compute_width (start));
 		curs_set (1);
@@ -1206,6 +1214,7 @@ fun handle_editor (wint_t c) {
 		// Fall-through
 	case ACTION_INPUT_ABORT:
 		g.editor = 0;
+		g.editor_info.clear ();
 		g.editor_line.clear ();
 		g.editor_cursor = 0;
 		g.editor_inserting = false;
@@ -1376,7 +1385,15 @@ fun handle (wint_t c) -> bool {
 	case ACTION_SEARCH:
 		g.editor = L"search";
 		g.editor_on_change = [] {
-			search (g.editor_line, 0);
+			int matches = search (g.editor_line, 0);
+			if (g.editor_line.empty ())
+				g.editor_info.clear ();
+			else if (matches == 0)
+				g.editor_info = L"(no match)";
+			else if (matches == 1)
+				g.editor_info = L"(1 match)";
+			else
+				g.editor_info = L"(" + to_wstring (matches) + L" matches)";
 		};
 		g.editor_on_confirm = [] {
 			choose (at_cursor ());
