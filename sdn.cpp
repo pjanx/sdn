@@ -1195,6 +1195,7 @@ fun handle_editor (wint_t c) {
 		g.editor_inserting = false;
 	}
 
+	auto original = g.editor_line;
 	switch (i == g_input_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_INPUT_CONFIRM:
 		if (g.editor_on_confirm)
@@ -1207,7 +1208,7 @@ fun handle_editor (wint_t c) {
 		g.editor_inserting = false;
 		g.editor_on_change = nullptr;
 		g.editor_on_confirm = nullptr;
-		break;
+		return;
 	case ACTION_INPUT_BEGINNING:
 		g.editor_cursor = 0;
 		break;
@@ -1256,10 +1257,10 @@ fun handle_editor (wint_t c) {
 		} else {
 			g.editor_line.insert (g.editor_cursor, 1, c);
 			g.editor_cursor++;
-			if (g.editor_on_change)
-				g.editor_on_change ();
 		}
 	}
+	if (g.editor_on_change && g.editor_line != original)
+		g.editor_on_change ();
 }
 
 fun handle (wint_t c) -> bool {
