@@ -459,8 +459,13 @@ static map<wint_t, action> g_input_actions {
 	{CTRL ('A'), ACTION_INPUT_BEGINNING}, {KEY (HOME), ACTION_INPUT_BEGINNING},
 	{CTRL ('E'), ACTION_INPUT_END}, {KEY (END), ACTION_INPUT_END},
 };
+static map<wint_t, action> g_search_actions {
+	{CTRL ('P'), ACTION_UP}, {KEY (UP), ACTION_UP},
+	{CTRL ('N'), ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
+};
 static const map<string, map<wint_t, action>*> g_binding_contexts {
 	{"normal", &g_normal_actions}, {"input", &g_input_actions},
+	{"search", &g_search_actions},
 };
 
 #define LS(XX) XX(NORMAL, "no") XX(FILE, "fi") XX(RESET, "rs") \
@@ -533,6 +538,7 @@ static struct {
 	bool editor_inserting;              ///< Inserting a literal character
 	void (*editor_on_change) ();        ///< Callback on editor change
 	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
+	map<action, void (*) ()> editor_on; ///< Handlers for custom actions
 
 	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_INFO, AT_CMDLINE, AT_COUNT };
 	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0, A_ITALIC, 0};
@@ -1013,6 +1019,18 @@ fun search (const wstring &needle, int push) -> int {
 	return matches;
 }
 
+fun search_interactive (int push) {
+	int matches = search (g.editor_line, push);
+	if (g.editor_line.empty ())
+		g.editor_info.clear ();
+	else if (matches == 0)
+		g.editor_info = L"(no match)";
+	else if (matches == 1)
+		g.editor_info = L"(1 match)";
+	else
+		g.editor_info = L"(" + to_wstring (matches) + L" matches)";
+}
+
 fun fix_cursor_and_offset () {
 	g.cursor = min (g.cursor, int (g.entries.size ()) - 1);
 	g.cursor = max (g.cursor, 0);
@@ -1200,14 +1218,23 @@ fun move_towards_spacing (int diff) -> bool {
 }
 
 fun handle_editor (wint_t c) {
-	auto i = g_input_actions.find (g.editor_inserting ? WEOF : c);
+	auto action = ACTION_NONE;
 	if (g.editor_inserting) {
 		(void) halfdelay (1);
 		g.editor_inserting = false;
+	} else {
+		auto i = g_input_actions.find (c);
+		if (i != g_input_actions.end ())
+			action = i->second;
+
+		auto m = g_binding_contexts.find (to_mb (g.editor));
+		if (m != g_binding_contexts.end ()
+		 && (i = m->second->find (c)) != m->second->end ())
+			action = i->second;
 	}
 
 	auto original = g.editor_line;
-	switch (i == g_input_actions.end () ? ACTION_NONE : i->second) {
+	switch (action) {
 	case ACTION_INPUT_CONFIRM:
 		if (g.editor_on_confirm)
 			g.editor_on_confirm ();
@@ -1220,6 +1247,7 @@ fun handle_editor (wint_t c) {
 		g.editor_inserting = false;
 		g.editor_on_change = nullptr;
 		g.editor_on_confirm = nullptr;
+		g.editor_on.clear ();
 		return;
 	case ACTION_INPUT_BEGINNING:
 		g.editor_cursor = 0;
@@ -1264,7 +1292,9 @@ fun handle_editor (wint_t c) {
 		g.editor_inserting = true;
 		break;
 	default:
-		if (c & (ALT | SYM)) {
+		if (auto handler = g.editor_on[action]) {
+			handler ();
+		} else if (c & (ALT | SYM)) {
 			beep ();
 		} else {
 			g.editor_line.insert (g.editor_cursor, 1, c);
@@ -1384,20 +1414,10 @@ fun handle (wint_t c) -> bool {
 
 	case ACTION_SEARCH:
 		g.editor = L"search";
-		g.editor_on_change = [] {
-			int matches = search (g.editor_line, 0);
-			if (g.editor_line.empty ())
-				g.editor_info.clear ();
-			else if (matches == 0)
-				g.editor_info = L"(no match)";
-			else if (matches == 1)
-				g.editor_info = L"(1 match)";
-			else
-				g.editor_info = L"(" + to_wstring (matches) + L" matches)";
-		};
-		g.editor_on_confirm = [] {
-			choose (at_cursor ());
-		};
+		g.editor_on_change       = [] { search_interactive (0); };
+		g.editor_on[ACTION_UP]   = [] { search_interactive (-1); };
+		g.editor_on[ACTION_DOWN] = [] { search_interactive (+1); };
+		g.editor_on_confirm      = [] { choose (at_cursor ()); };
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
