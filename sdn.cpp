@@ -989,10 +989,11 @@ fun show_help () {
 	fclose (contents);
 }
 
-fun search (const wstring &needle) -> int {
-	int best = g.cursor, best_n = 0, matches = 0;
-	for (int i = 0; i < int (g.entries.size ()); i++) {
-		auto o = (i + g.cursor) % g.entries.size ();
+/// Stays on the current match when there are no better ones, unless it's pushed
+fun search (const wstring &needle, int push) -> int {
+	int best = g.cursor, best_n = 0, matches = 0, step = push != 0 ? push : 1;
+	for (int i = 0, count = g.entries.size (); i < count; i++) {
+		auto o = (g.cursor + (count + i * step) + (count + push)) % count;
 		int n = prefix_length (to_wide (g.entries[o].filename), needle);
 		matches += n == needle.size ();
 		if (n > best_n) {
@@ -1060,7 +1061,7 @@ fun pop_levels (const string& old_cwd) {
 
 	fix_cursor_and_offset ();
 	if (!anchor.empty () && at_cursor ().filename != anchor)
-		search (to_wide (anchor));
+		search (to_wide (anchor), 0);
 }
 
 fun explode_path (const string &path, vector<string> &out) {
@@ -1375,7 +1376,7 @@ fun handle (wint_t c) -> bool {
 	case ACTION_SEARCH:
 		g.editor = L"search";
 		g.editor_on_change = [] {
-			search (g.editor_line);
+			search (g.editor_line, 0);
 		};
 		g.editor_on_confirm = [] {
 			choose (at_cursor ());
