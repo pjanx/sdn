@@ -989,17 +989,19 @@ fun show_help () {
 	fclose (contents);
 }
 
-fun search (const wstring &needle) {
-	int best = g.cursor, best_n = 0;
+fun search (const wstring &needle) -> int {
+	int best = g.cursor, best_n = 0, matches = 0;
 	for (int i = 0; i < int (g.entries.size ()); i++) {
 		auto o = (i + g.cursor) % g.entries.size ();
 		int n = prefix_length (to_wide (g.entries[o].filename), needle);
+		matches += n == needle.size ();
 		if (n > best_n) {
 			best = o;
 			best_n = n;
 		}
 	}
 	g.cursor = best;
+	return matches;
 }
 
 fun fix_cursor_and_offset () {
