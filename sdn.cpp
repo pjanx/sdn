@@ -407,7 +407,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
 	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) XX(SCROLL_UP) XX(SCROLL_DOWN) \
 	XX(CHDIR) XX(PARENT) XX(GO_START) XX(GO_HOME) \
-	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) \
+	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) XX(MKDIR) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE) XX(INPUT_DELETE) \
 	XX(INPUT_B_KILL_LINE) XX(INPUT_KILL_LINE) XX(INPUT_QUOTED_INSERT) \
@@ -441,6 +441,7 @@ static map<wint_t, action> g_normal_actions {
 	{'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
+	{KEY (F (7)), ACTION_MKDIR},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
 	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
 	{CTRL ('L'), ACTION_REDRAW}, {'r', ACTION_RELOAD},
@@ -1427,7 +1428,16 @@ fun handle (wint_t c) -> bool {
 		g.editor = L"rename";
 		g.editor_on_confirm = [] {
 			auto mb = to_mb (g.editor_line);
-			rename (at_cursor ().filename.c_str (), mb.c_str ());
+			if (rename (at_cursor ().filename.c_str (), mb.c_str ()))
+				show_message (strerror (errno));
+			reload (true);
+		};
+		break;
+	case ACTION_MKDIR:
+		g.editor = L"mkdir";
+		g.editor_on_confirm = [] {
+			if (mkdir (to_mb (g.editor_line).c_str (), 0777))
+				show_message (strerror (errno));
 			reload (true);
 		};
 		break;
