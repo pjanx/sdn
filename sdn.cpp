@@ -441,7 +441,7 @@ static map<wint_t, action> g_normal_actions {
 	{'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
 	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
-	{KEY (F (7)), ACTION_MKDIR},
+	{KEY (F (6)), ACTION_RENAME_PREFILL}, {KEY (F (7)), ACTION_MKDIR},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
 	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
 	{CTRL ('L'), ACTION_REDRAW}, {'r', ACTION_RELOAD},
