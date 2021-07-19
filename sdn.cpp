@@ -93,8 +93,8 @@ fun to_mb (const wstring &wide) -> string {
 	return mb;
 }
 
-fun prefix_length (const wstring &in, const wstring &of) -> int {
-	int score = 0;
+fun prefix_length (const wstring &in, const wstring &of) -> size_t {
+	size_t score = 0;
 	for (size_t i = 0; i < of.size () && in.size () >= i && in[i] == of[i]; i++)
 		score++;
 	return score;
@@ -1008,10 +1008,10 @@ fun show_help () {
 fun search (const wstring &needle, int push) -> int {
 	int best = g.cursor, best_n = 0, matches = 0, step = push != 0 ? push : 1;
 	for (int i = 0, count = g.entries.size (); i < count; i++) {
-		auto o = (g.cursor + (count + i * step) + (count + push)) % count;
-		int n = prefix_length (to_wide (g.entries[o].filename), needle);
+		int o = (g.cursor + (count + i * step) + (count + push)) % count;
+		size_t n = prefix_length (to_wide (g.entries[o].filename), needle);
 		matches += n == needle.size ();
-		if (n > best_n) {
+		if (n > (size_t) best_n) {
 			best = o;
 			best_n = n;
 		}
