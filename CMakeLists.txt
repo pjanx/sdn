@@ -3,7 +3,8 @@ cmake_minimum_required (VERSION 3.1)
 project (sdn VERSION 0.1 LANGUAGES CXX)
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-	set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
+	set (CMAKE_CXX_FLAGS
+		"${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-misleading-indentation -pedantic")
 endif ()
 
 # Since we use a language with slow compilers, let's at least use a fast linker

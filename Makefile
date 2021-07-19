@@ -1,6 +1,6 @@
 .POSIX:
 SHELL = /bin/sh
-CXXFLAGS = -g -std=c++14 -Wall -Wextra -pedantic
+CXXFLAGS = -g -std=c++14 -Wall -Wextra -Wno-misleading-indentation -pedantic
 CPPFLAGS = `sed -ne '/^project (\([^ )]*\) VERSION \([^ )]*\).*/ \
 	s//-DPROJECT_NAME="\1" -DPROJECT_VERSION="\2"/p' CMakeLists.txt`
 
