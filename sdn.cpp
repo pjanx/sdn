@@ -666,7 +666,9 @@ fun make_entry (const struct dirent *f) -> entry {
 	}
 
 	auto mode = decode_mode (info.st_mode);
-	// This is a Linux-only extension
+	// We're using a laughably small subset of libacl: this translates to
+	// two lgetxattr() calls, the results of which are compared with
+	// specific architecture-dependent constants.  Linux-only.
 	if (acl_extended_file_nofollow (f->d_name) > 0)
 		mode += L"+";
 	e.cols[entry::MODES] = apply_attrs (mode, 0);
