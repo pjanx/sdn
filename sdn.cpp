@@ -268,7 +268,7 @@ fun xdg_config_home () -> string {
 fun xdg_config_find (const string &suffix) -> unique_ptr<ifstream> {
 	vector<string> dirs {xdg_config_home ()};
 	const char *system_dirs = getenv ("XDG_CONFIG_DIRS");
-	split (system_dirs ? system_dirs : "/etc/xdg", ":", dirs);
+	split ((system_dirs && *system_dirs) ? system_dirs : "/etc/xdg", ":", dirs);
 	for (const auto &dir : dirs) {
 		if (dir[0] != '/')
 			continue;
