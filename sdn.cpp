@@ -824,6 +824,15 @@ fun at_cursor () -> const entry & {
 	return g.cursor >= int (g.entries.size ()) ? invalid : g.entries[g.cursor];
 }
 
+fun resort (const string anchor = at_cursor ().filename) {
+	sort (begin (g.entries), end (g.entries));
+	if (!anchor.empty ()) {
+		for (size_t i = 0; i < g.entries.size (); i++)
+			if (g.entries[i].filename == anchor)
+				g.cursor = i;
+	}
+}
+
 fun reload (bool keep_anchor) {
 	g.unames.clear();
 	while (auto *ent = getpwent ())
@@ -851,19 +860,15 @@ fun reload (bool keep_anchor) {
 			g.entries.push_back (make_entry (f));
 	}
 	closedir (dir);
-	sort (begin (g.entries), end (g.entries));
-	g.out_of_date = false;
 
-	if (!anchor.empty ()) {
-		for (size_t i = 0; i < g.entries.size (); i++)
-			if (g.entries[i].filename == anchor)
-				g.cursor = i;
-	}
+	g.out_of_date = false;
 	for (int col = 0; col < entry::COLUMNS; col++) {
 		auto &longest = g.max_widths[col] = 0;
 		for (const auto &entry : g.entries)
 			longest = max (longest, compute_width (entry.cols[col]));
 	}
+
+	resort (anchor);
 
 	g.cursor = max (0, min (g.cursor, int (g.entries.size ()) - 1));
 	g.offset = max (0, min (g.offset, int (g.entries.size ()) - 1));
@@ -1354,12 +1359,12 @@ fun handle (wint_t c) -> bool {
 	case ACTION_SORT_LEFT:
 		g.sort_column = (g.sort_column + entry::COLUMNS - 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload (true);
+		resort ();
 		break;
 	case ACTION_SORT_RIGHT:
 		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
-		reload (true);
+		resort ();
 		break;
 
 	case ACTION_UP:
@@ -1449,7 +1454,7 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_REVERSE_SORT:
 		g.reverse_sort = !g.reverse_sort;
-		reload (true);
+		resort ();
 		break;
 	case ACTION_SHOW_HIDDEN:
 		g.show_hidden = !g.show_hidden;
