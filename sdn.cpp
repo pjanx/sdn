@@ -638,9 +638,8 @@ fun make_entry (const struct dirent *f) -> entry {
 	e.info.st_mode = DTTOIF (f->d_type);
 	auto &info = e.info;
 
-	// TODO: benchmark just readdir() vs. lstat(), also on dead mounts;
-	//   it might make sense to stat asynchronously in threads
-	//   http://lkml.iu.edu/hypermail//linux/kernel/0804.3/1616.html
+	// io_uring is only at most about 50% faster, though it might help with
+	// slowly statting devices, at a major complexity cost.
 	if (lstat (f->d_name, &info)) {
 		e.cols[entry::MODES] = apply_attrs ({ decode_type (info.st_mode),
 			L'?', L'?', L'?', L'?', L'?', L'?', L'?', L'?', L'?' }, 0);
