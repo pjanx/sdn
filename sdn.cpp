@@ -318,9 +318,9 @@ fun invert (cchar_t &ch) {
 }
 
 fun apply_attrs (const wstring &w, attr_t attrs) -> ncstring {
-	ncstring res;
-	for (auto c : w)
-		res += cchar (attrs, c);
+	ncstring res (w.size (), cchar_t {});
+	for (size_t i = 0; i < w.size (); i++)
+		res[i] = cchar (attrs, w[i]);
 	return res;
 }
 
@@ -557,8 +557,8 @@ static struct {
 
 	// Refreshed by reload():
 
-	map<uid_t, string> unames;          ///< User names by UID
-	map<gid_t, string> gnames;          ///< Group names by GID
+	map<uid_t, wstring> unames;         ///< User names by UID
+	map<gid_t, wstring> gnames;         ///< Group names by GID
 	struct tm now;                      ///< Current local time for display
 } g;
 
@@ -674,12 +674,12 @@ fun make_entry (const struct dirent *f) -> entry {
 
 	auto usr = g.unames.find (info.st_uid);
 	e.cols[entry::USER] = (usr != g.unames.end ())
-		? apply_attrs (to_wide (usr->second), 0)
+		? apply_attrs (usr->second, 0)
 		: apply_attrs (to_wstring (info.st_uid), 0);
 
 	auto grp = g.gnames.find (info.st_gid);
 	e.cols[entry::GROUP] = (grp != g.gnames.end ())
-		? apply_attrs (to_wide (grp->second), 0)
+		? apply_attrs (grp->second, 0)
 		: apply_attrs (to_wstring (info.st_gid), 0);
 
 	auto size = to_wstring (info.st_size);
@@ -689,16 +689,16 @@ fun make_entry (const struct dirent *f) -> entry {
 	else if (info.st_size >> 10) size = to_wstring (info.st_size >> 10) + L"K";
 	e.cols[entry::SIZE] = apply_attrs (size, 0);
 
-	char buf[32] = "";
+	wchar_t buf[32] = L"";
 	auto tm = localtime (&info.st_mtime);
-	strftime (buf, sizeof buf,
-		(tm->tm_year == g.now.tm_year) ? "%b %e %H:%M" : "%b %e  %Y", tm);
-	e.cols[entry::MTIME] = apply_attrs (to_wide (buf), 0);
+	wcsftime (buf, sizeof buf / sizeof *buf,
+		(tm->tm_year == g.now.tm_year) ? L"%b %e %H:%M" : L"%b %e  %Y", tm);
+	e.cols[entry::MTIME] = apply_attrs (buf, 0);
 
 	auto &fn = e.cols[entry::FILENAME] =
 		apply_attrs (to_wide (e.filename), ls_format (e, false));
 	if (!e.target_path.empty ()) {
-		fn.append (apply_attrs (to_wide (" -> "), 0));
+		fn.append (apply_attrs (L" -> ", 0));
 		fn.append (apply_attrs (to_wide (e.target_path), ls_format (e, true)));
 	}
 	return e;
@@ -784,9 +784,10 @@ fun update () {
 }
 
 fun operator< (const entry &e1, const entry &e2) -> bool {
-	auto t1 = make_tuple (e1.filename != "..",
+	static string dotdot {".."};
+	auto t1 = make_tuple (e1.filename != dotdot,
 		!S_ISDIR (e1.info.st_mode) && !S_ISDIR (e1.target_info.st_mode));
-	auto t2 = make_tuple (e2.filename != "..",
+	auto t2 = make_tuple (e2.filename != dotdot,
 		!S_ISDIR (e2.info.st_mode) && !S_ISDIR (e2.target_info.st_mode));
 	if (t1 != t2)
 		return t1 < t2;
@@ -835,12 +836,12 @@ fun resort (const string anchor = at_cursor ().filename) {
 fun reload (bool keep_anchor) {
 	g.unames.clear();
 	while (auto *ent = getpwent ())
-		g.unames.emplace (ent->pw_uid, ent->pw_name);
+		g.unames.emplace (ent->pw_uid, to_wide (ent->pw_name));
 	endpwent();
 
 	g.gnames.clear();
 	while (auto *ent = getgrent ())
-		g.gnames.emplace (ent->gr_gid, ent->gr_name);
+		g.gnames.emplace (ent->gr_gid, to_wide (ent->gr_name));
 	endgrent();
 
 	string anchor;
