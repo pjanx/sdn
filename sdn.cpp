@@ -51,6 +51,11 @@
 #include <acl/libacl.h>
 #include <ncurses.h>
 
+// To implement cbreak() with disabled ^S that gets reënabled on endwin()
+#define NCURSES_INTERNALS
+#include <term.h>
+#undef CTRL  // term.h -> termios.h -> sys/ttydefaults.h, too simplistic
+
 // Unicode is complex enough already and we might make assumptions
 #ifndef __STDC_ISO_10646__
 #error Unicode required for wchar_t
@@ -439,7 +444,7 @@ static map<wint_t, action> g_normal_actions {
 	{CTRL ('Y'), ACTION_SCROLL_UP}, {CTRL ('E'), ACTION_SCROLL_DOWN},
 	{'c', ACTION_CHDIR}, {ALT | KEY (UP), ACTION_PARENT},
 	{'&', ACTION_GO_START}, {'~', ACTION_GO_HOME},
-	{'/', ACTION_SEARCH},  {'s', ACTION_SEARCH},
+	{'/', ACTION_SEARCH}, {'s', ACTION_SEARCH}, {CTRL ('S'), ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{KEY (F (6)), ACTION_RENAME_PREFILL}, {KEY (F (7)), ACTION_MKDIR},
 	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
@@ -1831,6 +1836,10 @@ int main (int argc, char *argv[]) {
 	reload (false);
 	pop_levels (g.cwd);
 	update ();
+
+	// This gets applied along with the following halfdelay()
+	cur_term->Nttyb.c_cc[VSTOP] =
+		cur_term->Nttyb.c_cc[VSTART] = _POSIX_VDISABLE;
 
 	// Invoking keypad() earlier would make ncurses flush its output buffer,
 	// which would worsen start-up flickering
