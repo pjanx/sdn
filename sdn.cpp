@@ -828,13 +828,17 @@ fun at_cursor () -> const entry & {
 	return g.cursor >= int (g.entries.size ()) ? invalid : g.entries[g.cursor];
 }
 
-fun resort (const string anchor = at_cursor ().filename) {
-	sort (begin (g.entries), end (g.entries));
+fun focus (const string &anchor) {
 	if (!anchor.empty ()) {
 		for (size_t i = 0; i < g.entries.size (); i++)
 			if (g.entries[i].filename == anchor)
 				g.cursor = i;
 	}
+}
+
+fun resort (const string anchor = at_cursor ().filename) {
+	sort (begin (g.entries), end (g.entries));
+	focus (anchor);
 }
 
 fun reload (bool keep_anchor) {
@@ -1446,9 +1450,11 @@ fun handle (wint_t c) -> bool {
 	case ACTION_MKDIR:
 		g.editor = L"mkdir";
 		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
-			if (mkdir (to_mb (g.editor_line).c_str (), 0777))
+			auto mb = to_mb (g.editor_line);
+			if (mkdir (mb.c_str (), 0777))
 				show_message (strerror (errno));
 			reload (true);
+			focus (mb);
 		};
 		break;
 
