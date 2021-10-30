@@ -543,7 +543,6 @@ static struct {
 	int editor_cursor = 0;              ///< Cursor position
 	bool editor_inserting;              ///< Inserting a literal character
 	void (*editor_on_change) ();        ///< Callback on editor change
-	void (*editor_on_confirm) ();       ///< Callback on editor confirmation
 	map<action, void (*) ()> editor_on; ///< Handlers for custom actions
 
 	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_INFO, AT_CMDLINE, AT_COUNT };
@@ -1249,8 +1248,8 @@ fun handle_editor (wint_t c) {
 	auto original = g.editor_line;
 	switch (action) {
 	case ACTION_INPUT_CONFIRM:
-		if (g.editor_on_confirm)
-			g.editor_on_confirm ();
+		if (auto handler = g.editor_on[action])
+			handler ();
 		// Fall-through
 	case ACTION_INPUT_ABORT:
 		g.editor = 0;
@@ -1259,7 +1258,6 @@ fun handle_editor (wint_t c) {
 		g.editor_cursor = 0;
 		g.editor_inserting = false;
 		g.editor_on_change = nullptr;
-		g.editor_on_confirm = nullptr;
 		g.editor_on.clear ();
 		return;
 	case ACTION_INPUT_BEGINNING:
@@ -1411,7 +1409,7 @@ fun handle (wint_t c) -> bool {
 
 	case ACTION_CHDIR:
 		g.editor = L"chdir";
-		g.editor_on_confirm = [] {
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
 			change_dir (untilde (to_mb (g.editor_line)));
 		};
 		break;
@@ -1427,10 +1425,10 @@ fun handle (wint_t c) -> bool {
 
 	case ACTION_SEARCH:
 		g.editor = L"search";
-		g.editor_on_change       = [] { search_interactive (0); };
-		g.editor_on[ACTION_UP]   = [] { search_interactive (-1); };
-		g.editor_on[ACTION_DOWN] = [] { search_interactive (+1); };
-		g.editor_on_confirm      = [] { choose (at_cursor ()); };
+		g.editor_on_change                = [] { search_interactive (0); };
+		g.editor_on[ACTION_UP]            = [] { search_interactive (-1); };
+		g.editor_on[ACTION_DOWN]          = [] { search_interactive (+1); };
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] { choose (at_cursor ()); };
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
@@ -1438,7 +1436,7 @@ fun handle (wint_t c) -> bool {
 		// Fall-through
 	case ACTION_RENAME:
 		g.editor = L"rename";
-		g.editor_on_confirm = [] {
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
 			auto mb = to_mb (g.editor_line);
 			if (rename (at_cursor ().filename.c_str (), mb.c_str ()))
 				show_message (strerror (errno));
@@ -1447,7 +1445,7 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_MKDIR:
 		g.editor = L"mkdir";
-		g.editor_on_confirm = [] {
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
 			if (mkdir (to_mb (g.editor_line).c_str (), 0777))
 				show_message (strerror (errno));
 			reload (true);
