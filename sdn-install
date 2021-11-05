@@ -54,6 +54,7 @@ sdn-navigate () {
       ((SDN_P=SDN_P+${#insert}+1))
     }
     [[ -z $helper ]] && break
+    history -s -- "$helper"
     /bin/sh -c "$helper" || break
   done
 }
