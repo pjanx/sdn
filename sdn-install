@@ -16,6 +16,9 @@ sdn-navigate () {
     # helpers after the terminal has been resized while running sdn
     command true
 
+    # Add to history, see https://www.zsh.org/mla/workers/2020/msg00633.html
+    fc -R =(print -- "$helper")
+
     /bin/sh -c "$helper" </dev/tty || break
   done
   # optionally: zle zle-line-init
