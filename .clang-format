@@ -1,0 +1,14 @@
+BasedOnStyle: LLVM
+ColumnLimit: 80
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForContinuationAndIndentation
+SpaceAfterCStyleCast: true
+SpaceBeforeParens: Always
+AlignAfterOpenBracket: DontAlign
+AlignEscapedNewlines: DontAlign
+AlignOperands: DontAlign
+AlignConsecutiveMacros: Consecutive
+BreakBeforeTernaryOperators: true
+SpacesBeforeTrailingComments: 2
+WhitespaceSensitiveMacros: ['XX', 'ACTIONS', 'LS']

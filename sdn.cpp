@@ -18,38 +18,38 @@
 // May be required for ncursesw and we generally want it all anyway
 #define _XOPEN_SOURCE_EXTENDED
 
-#include <string>
-#include <vector>
-#include <locale>
-#include <iostream>
 #include <algorithm>
-#include <cwchar>
 #include <climits>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <fstream>
+#include <iostream>
+#include <locale>
 #include <map>
-#include <tuple>
 #include <memory>
+#include <string>
+#include <tuple>
+#include <vector>
 
-#include <unistd.h>
 #include <dirent.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/acl.h>
 #include <fcntl.h>
-#include <pwd.h>
 #include <grp.h>
 #include <libgen.h>
-#include <time.h>
+#include <pwd.h>
 #include <signal.h>
-
-#include <sys/inotify.h>
-#include <sys/xattr.h>
+#include <sys/acl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
 #include <acl/libacl.h>
 #include <ncurses.h>
+#include <sys/inotify.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/xattr.h>
 
 // To implement cbreak() with disabled ^S that gets reënabled on endwin()
 #define NCURSES_INTERNALS
@@ -164,9 +164,9 @@ fun shell_escape (const string &v) -> string {
 }
 
 fun parse_line (istream &is, vector<string> &out) -> bool {
-	enum {STA, DEF, COM, ESC, WOR, QUO, STATES};
-	enum {TAKE = 1 << 3, PUSH = 1 << 4, STOP = 1 << 5, ERROR = 1 << 6};
-	enum {TWOR = TAKE | WOR};
+	enum { STA, DEF, COM, ESC, WOR, QUO, STATES };
+	enum { TAKE = 1 << 3, PUSH = 1 << 4, STOP = 1 << 5, ERROR = 1 << 6 };
+	enum { TWOR = TAKE | WOR };
 
 	// We never transition back to the start state, so it can stay as a no-op
 	static char table[STATES][7] = {
@@ -251,7 +251,7 @@ fun capitalize (const string &s) -> string {
 
 /// Underlining for teletypes (also called overstriking),
 /// also imitated in more(1) and less(1)
-fun underline (const string& s) -> string {
+fun underline (const string &s) -> string {
 	string result;
 	for (auto c : s)
 		result.append ({c, 8, '_'});
@@ -609,8 +609,8 @@ fun ls_format (const entry &e, bool for_target) -> chtype {
 			set (LS_STICKY_OTHER_WRITABLE);
 	} else if (S_ISLNK (info.st_mode)) {
 		type = LS_SYMLINK;
-		if (!e.target_info.st_mode
-		 && (ls_is_colored (LS_ORPHAN) || g.ls_symlink_as_target))
+		if (!e.target_info.st_mode &&
+			(ls_is_colored (LS_ORPHAN) || g.ls_symlink_as_target))
 			type = LS_ORPHAN;
 	} else if (S_ISFIFO (info.st_mode)) {
 		type = LS_FIFO;
@@ -712,7 +712,7 @@ fun inline visible_lines () -> int { return max (0, LINES - 2); }
 
 fun update () {
 	int start_column = g.full_view ? 0 : entry::FILENAME;
-	static int alignment[entry::COLUMNS] = { -1, -1, -1, 1, 1, -1 };
+	static int alignment[entry::COLUMNS] = {-1, -1, -1, 1, 1, -1};
 	erase ();
 
 	int available = visible_lines ();
@@ -842,15 +842,15 @@ fun resort (const string anchor = at_cursor ().filename) {
 }
 
 fun reload (bool keep_anchor) {
-	g.unames.clear();
+	g.unames.clear ();
 	while (auto *ent = getpwent ())
 		g.unames.emplace (ent->pw_uid, to_wide (ent->pw_name));
-	endpwent();
+	endpwent ();
 
-	g.gnames.clear();
+	g.gnames.clear ();
 	while (auto *ent = getgrent ())
 		g.gnames.emplace (ent->gr_gid, to_wide (ent->gr_name));
-	endgrent();
+	endgrent ();
 
 	string anchor;
 	if (keep_anchor)
@@ -894,7 +894,7 @@ fun show_message (const string &message, int ttl = 30) {
 	g.message_ttl = ttl;
 }
 
-fun run_program (initializer_list<const char*> list, const string &filename) {
+fun run_program (initializer_list<const char *> list, const string &filename) {
 	if (g.ext_helpers) {
 		// XXX: this doesn't try them all out, though it shouldn't make any
 		// noticeable difference
@@ -1083,7 +1083,7 @@ fun relativize (string current, const string &path) -> string {
 	return path;
 }
 
-fun pop_levels (const string& old_cwd) {
+fun pop_levels (const string &old_cwd) {
 	string anchor; auto i = g.levels.rbegin ();
 	while (i != g.levels.rend () && !is_ancestor_dir (i->path, g.cwd)) {
 		if (i->path == g.cwd) {
@@ -1161,7 +1161,7 @@ fun change_dir (const string &path) {
 				beep ();
 				return;
 			}
-			if (!out.back().empty ())
+			if (!out.back ().empty ())
 				out.pop_back ();
 		} else if (in[i] != "." && (!in[i].empty () || i < startempty)) {
 			out.push_back (in[i]);
@@ -1228,9 +1228,9 @@ fun choose (const entry &entry) {
 // Move the cursor in `diff` direction and look for non-combining characters
 fun move_towards_spacing (int diff) -> bool {
 	g.editor_cursor += diff;
-	return g.editor_cursor <= 0
-		|| g.editor_cursor >= int (g.editor_line.length ())
-		|| wcwidth (g.editor_line.at (g.editor_cursor));
+	return g.editor_cursor <= 0 ||
+		g.editor_cursor >= int (g.editor_line.length ()) ||
+		wcwidth (g.editor_line.at (g.editor_cursor));
 }
 
 fun handle_editor (wint_t c) {
@@ -1244,8 +1244,8 @@ fun handle_editor (wint_t c) {
 			action = i->second;
 
 		auto m = g_binding_contexts.find (to_mb (g.editor));
-		if (m != g_binding_contexts.end ()
-		 && (i = m->second->find (c)) != m->second->end ())
+		if (m != g_binding_contexts.end () &&
+			(i = m->second->find (c)) != m->second->end ())
 			action = i->second;
 	}
 
@@ -1271,13 +1271,13 @@ fun handle_editor (wint_t c) {
 		g.editor_cursor = g.editor_line.length ();
 		break;
 	case ACTION_INPUT_BACKWARD:
-		while (g.editor_cursor > 0
-			&& !move_towards_spacing (-1))
+		while (g.editor_cursor > 0 &&
+			!move_towards_spacing (-1))
 			;
 		break;
 	case ACTION_INPUT_FORWARD:
-		while (g.editor_cursor < int (g.editor_line.length ())
-			&& !move_towards_spacing (+1))
+		while (g.editor_cursor < int (g.editor_line.length ()) &&
+			!move_towards_spacing (+1))
 			;
 		break;
 	case ACTION_INPUT_B_DELETE:
@@ -1560,8 +1560,8 @@ fun load_ls_colors (vector<string> colors) {
 		if (equal == string::npos)
 			continue;
 		auto key = pair.substr (0, equal), value = pair.substr (equal + 1);
-		if (key != g_ls_colors[LS_SYMLINK]
-		 || !(g.ls_symlink_as_target = value == "target"))
+		if (key != g_ls_colors[LS_SYMLINK] ||
+			!(g.ls_symlink_as_target = value == "target"))
 			attrs[key] = decode_ansi_sgr (split (value, ";"));
 	}
 	for (int i = 0; i < LS_COUNT; i++) {
