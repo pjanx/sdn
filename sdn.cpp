@@ -841,6 +841,11 @@ fun resort (const string anchor = at_cursor ().filename) {
 	focus (anchor);
 }
 
+fun show_message (const string &message, int ttl = 30) {
+	g.message = to_wide (message);
+	g.message_ttl = ttl;
+}
+
 fun reload (bool keep_anchor) {
 	g.unames.clear ();
 	while (auto *ent = getpwent ())
@@ -859,6 +864,16 @@ fun reload (bool keep_anchor) {
 	auto now = time (NULL); g.now = *localtime (&now);
 	auto dir = opendir (".");
 	g.entries.clear ();
+	if (!dir) {
+		show_message (strerror (errno));
+		if (g.cwd != "/") {
+			struct dirent f = {};
+			strncpy(f.d_name, "..", sizeof f.d_name);
+			f.d_type = DT_DIR;
+			g.entries.push_back (make_entry (&f));
+		}
+		goto readfail;
+	}
 	while (auto f = readdir (dir)) {
 		string name = f->d_name;
 		// Two dots are for navigation but this ain't as useful
@@ -869,6 +884,7 @@ fun reload (bool keep_anchor) {
 	}
 	closedir (dir);
 
+readfail:
 	g.out_of_date = false;
 	for (int col = 0; col < entry::COLUMNS; col++) {
 		auto &longest = g.max_widths[col] = 0;
@@ -887,11 +903,6 @@ fun reload (bool keep_anchor) {
 	// We don't show atime, so access and open are merely spam
 	g.inotify_wd = inotify_add_watch (g.inotify_fd, ".",
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
-}
-
-fun show_message (const string &message, int ttl = 30) {
-	g.message = to_wide (message);
-	g.message_ttl = ttl;
 }
 
 fun run_program (initializer_list<const char *> list, const string &filename) {
