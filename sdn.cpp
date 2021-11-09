@@ -1841,9 +1841,12 @@ int main (int argc, char *argv[]) {
 	pop_levels (g.cwd);
 	update ();
 
+	// Cunt, now I need to reïmplement all signal handling
+#if NCURSES_VERSION_PATCH < 20210821
 	// This gets applied along with the following halfdelay()
 	cur_term->Nttyb.c_cc[VSTOP] =
 		cur_term->Nttyb.c_cc[VSTART] = _POSIX_VDISABLE;
+#endif
 
 	// Invoking keypad() earlier would make ncurses flush its output buffer,
 	// which would worsen start-up flickering
