@@ -1421,6 +1421,7 @@ fun handle (wint_t c) -> bool {
 		break;
 	case ACTION_SCROLL_UP:
 		g.offset--;
+		break;
 	case ACTION_CENTER:
 		g.offset = g.cursor - (visible_lines () - 1) / 2;
 		break;
