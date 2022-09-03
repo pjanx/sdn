@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2021, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2022, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -34,6 +34,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <grp.h>
 #include <libgen.h>
 #include <pwd.h>
@@ -1031,24 +1032,23 @@ fun show_help () {
 	fclose (contents);
 }
 
-/// Stays on the current match when there are no better ones, unless it's pushed
-fun search (const wstring &needle, int push) -> int {
-	int best = g.cursor, best_n = 0, matches = 0, step = push != 0 ? push : 1;
+fun match (const wstring &needle, int push) -> int {
+	string pattern = to_mb (needle) + "*";
+	bool jump_to_first = push || fnmatch (pattern.c_str(),
+		g.entries[g.cursor].filename.c_str (), 0) == FNM_NOMATCH;
+	int best = g.cursor, matches = 0, step = push + !push;
 	for (int i = 0, count = g.entries.size (); i < count; i++) {
 		int o = (g.cursor + (count + i * step) + (count + push)) % count;
-		size_t n = prefix_length (to_wide (g.entries[o].filename), needle);
-		matches += n == needle.size ();
-		if (n > (size_t) best_n) {
+		if (!fnmatch (pattern.c_str (), g.entries[o].filename.c_str (), 0)
+		 && !matches++ && jump_to_first)
 			best = o;
-			best_n = n;
-		}
 	}
 	g.cursor = best;
 	return matches;
 }
 
-fun search_interactive (int push) {
-	int matches = search (g.editor_line, push);
+fun match_interactive (int push) {
+	int matches = match (g.editor_line, push);
 	if (g.editor_line.empty ())
 		g.editor_info.clear ();
 	else if (matches == 0)
@@ -1057,6 +1057,21 @@ fun search_interactive (int push) {
 		g.editor_info = L"(1 match)";
 	else
 		g.editor_info = L"(" + to_wstring (matches) + L" matches)";
+}
+
+/// Stays on the current item unless there are better matches
+fun lookup (const wstring &needle) {
+	int best = g.cursor;
+	size_t best_n = 0;
+	for (int i = 0, count = g.entries.size (); i < count; i++) {
+		int o = (g.cursor + i) % count;
+		size_t n = prefix_length (to_wide (g.entries[o].filename), needle);
+		if (n > best_n) {
+			best = o;
+			best_n = n;
+		}
+	}
+	g.cursor = best;
 }
 
 fun fix_cursor_and_offset () {
@@ -1115,7 +1130,7 @@ fun pop_levels (const string &old_cwd) {
 
 	fix_cursor_and_offset ();
 	if (!anchor.empty () && at_cursor ().filename != anchor)
-		search (to_wide (anchor), 0);
+		lookup (to_wide (anchor));
 }
 
 fun explode_path (const string &path, vector<string> &out) {
@@ -1444,9 +1459,9 @@ fun handle (wint_t c) -> bool {
 
 	case ACTION_SEARCH:
 		g.editor = L"search";
-		g.editor_on_change                = [] { search_interactive (0); };
-		g.editor_on[ACTION_UP]            = [] { search_interactive (-1); };
-		g.editor_on[ACTION_DOWN]          = [] { search_interactive (+1); };
+		g.editor_on_change                = [] { match_interactive (0); };
+		g.editor_on[ACTION_UP]            = [] { match_interactive (-1); };
+		g.editor_on[ACTION_DOWN]          = [] { match_interactive (+1); };
 		g.editor_on[ACTION_INPUT_CONFIRM] = [] { choose (at_cursor ()); };
 		break;
 	case ACTION_RENAME_PREFILL:
