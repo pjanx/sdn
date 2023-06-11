@@ -1350,7 +1350,8 @@ fun handle_editor (wint_t c) {
 		if (auto handler = g.editor_on[action]) {
 			handler ();
 		} else if (c & (ALT | SYM)) {
-			beep ();
+			if (c != KEY (RESIZE))
+				beep ();
 		} else {
 			g.editor_line.insert (g.editor_cursor, 1, c);
 			g.editor_cursor++;
