@@ -416,7 +416,8 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 	XX(SEARCH) XX(RENAME) XX(RENAME_PREFILL) XX(MKDIR) \
 	XX(TOGGLE_FULL) XX(REVERSE_SORT) XX(SHOW_HIDDEN) XX(REDRAW) XX(RELOAD) \
 	XX(INPUT_ABORT) XX(INPUT_CONFIRM) XX(INPUT_B_DELETE) XX(INPUT_DELETE) \
-	XX(INPUT_B_KILL_LINE) XX(INPUT_KILL_LINE) XX(INPUT_QUOTED_INSERT) \
+	XX(INPUT_B_KILL_WORD) XX(INPUT_B_KILL_LINE) XX(INPUT_KILL_LINE) \
+	XX(INPUT_QUOTED_INSERT) \
 	XX(INPUT_BACKWARD) XX(INPUT_FORWARD) XX(INPUT_BEGINNING) XX(INPUT_END)
 
 #define XX(name) ACTION_ ## name,
@@ -459,7 +460,8 @@ static map<wint_t, action> g_input_actions {
 	// Sometimes terminfo is wrong, we need to accept both of these
 	{L'\b', ACTION_INPUT_B_DELETE}, {CTRL ('?'), ACTION_INPUT_B_DELETE},
 	{KEY (BACKSPACE), ACTION_INPUT_B_DELETE}, {KEY (DC), ACTION_INPUT_DELETE},
-	{CTRL ('D'), ACTION_INPUT_DELETE}, {CTRL ('U'), ACTION_INPUT_B_KILL_LINE},
+	{CTRL ('W'), ACTION_INPUT_B_KILL_WORD}, {CTRL ('D'), ACTION_INPUT_DELETE},
+	{CTRL ('U'), ACTION_INPUT_B_KILL_LINE},
 	{CTRL ('K'), ACTION_INPUT_KILL_LINE},
 	{CTRL ('V'), ACTION_INPUT_QUOTED_INSERT},
 	{CTRL ('B'), ACTION_INPUT_BACKWARD}, {KEY (LEFT), ACTION_INPUT_BACKWARD},
@@ -1322,6 +1324,17 @@ fun handle_editor (wint_t c) {
 				break;
 		}
 		break;
+	case ACTION_INPUT_B_KILL_WORD:
+	{
+		int i = g.editor_cursor;
+		while (i && g.editor_line[--i] == L' ');
+		while (i-- && g.editor_line[i] != L' ');
+		i++;
+
+		g.editor_line.erase (i, g.editor_cursor - i);
+		g.editor_cursor = i;
+		break;
+	}
 	case ACTION_INPUT_B_KILL_LINE:
 		g.editor_line.erase (0, g.editor_cursor);
 		g.editor_cursor = 0;
