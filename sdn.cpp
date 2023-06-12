@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2022, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2023, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -495,7 +495,7 @@ static const char *g_ls_colors[] = {LS(XX)};
 
 struct stringcaseless {
 	bool operator () (const string &a, const string &b) const {
-		const auto &c = locale::classic();
+		const auto &c = locale::classic ();
 		return lexicographical_compare (begin (a), end (a), begin (b), end (b),
 			[&](char m, char n) { return tolower (m, c) < tolower (n, c); });
 	}
@@ -872,7 +872,7 @@ fun reload (bool keep_anchor) {
 		show_message (strerror (errno));
 		if (g.cwd != "/") {
 			struct dirent f = {};
-			strncpy(f.d_name, "..", sizeof f.d_name);
+			strncpy (f.d_name, "..", sizeof f.d_name);
 			f.d_type = DT_DIR;
 			g.entries.push_back (make_entry (&f));
 		}
@@ -1036,7 +1036,7 @@ fun show_help () {
 
 fun match (const wstring &needle, int push) -> int {
 	string pattern = to_mb (needle) + "*";
-	bool jump_to_first = push || fnmatch (pattern.c_str(),
+	bool jump_to_first = push || fnmatch (pattern.c_str (),
 		g.entries[g.cursor].filename.c_str (), 0) == FNM_NOMATCH;
 	int best = g.cursor, matches = 0, step = push + !push;
 	for (int i = 0, count = g.entries.size (); i < count; i++) {
