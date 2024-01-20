@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2023, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2024, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -917,7 +917,7 @@ fun run_program (initializer_list<const char *> list, const string &filename) {
 		for (auto program : list)
 			if ((found = program))
 				break;
-		g.ext_helper = found + (" " + shell_escape (filename));
+		g.ext_helper = found + (" -- " + shell_escape (filename));
 		g.quitting = true;
 		return;
 	}
