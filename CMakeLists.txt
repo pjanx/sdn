@@ -7,13 +7,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 		"${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-misleading-indentation -pedantic")
 endif ()
 
-# Since we use a language with slow compilers, let's at least use a fast linker
-execute_process (COMMAND ${CMAKE_CXX_COMPILER} -fuse-ld=gold -Wl,--version
-	ERROR_QUIET OUTPUT_VARIABLE ld_version)
-if ("${ld_version}" MATCHES "GNU gold")
-	set (CMAKE_EXE_LINKER_FLAGS "-fuse-ld=gold ${CMAKE_EXE_LINKER_FLAGS}")
-endif ()
-
 find_package (PkgConfig REQUIRED)
 pkg_check_modules (NCURSESW QUIET ncursesw)
 
