@@ -640,6 +640,25 @@ fun ls_format (const entry &e, bool for_target) -> chtype {
 	return format;
 }
 
+fun suffixize (off_t size, unsigned shift, wchar_t suffix, std::wstring &out)
+	-> bool {
+	// Prevent implementation-defined and undefined behaviour
+	if (size < 0 || shift >= sizeof size * 8)
+		return false;
+
+	off_t divided = size >> shift;
+	if (divided >= 10) {
+		out.assign (std::to_wstring (divided)).append (1, suffix);
+		return true;
+	} else if (divided > 0) {
+		unsigned times_ten = size / double (off_t (1) << shift) * 10.0;
+		out.assign ({L'0' + wchar_t (times_ten / 10), L'.',
+			L'0' + wchar_t (times_ten % 10), suffix});
+		return true;
+	}
+	return false;
+}
+
 fun make_entry (const struct dirent *f) -> entry {
 	entry e;
 	e.filename = f->d_name;
@@ -690,11 +709,12 @@ fun make_entry (const struct dirent *f) -> entry {
 		? apply_attrs (grp->second, 0)
 		: apply_attrs (to_wstring (info.st_gid), 0);
 
-	auto size = to_wstring (info.st_size);
-	if      (info.st_size >> 40) size = to_wstring (info.st_size >> 40) + L"T";
-	else if (info.st_size >> 30) size = to_wstring (info.st_size >> 30) + L"G";
-	else if (info.st_size >> 20) size = to_wstring (info.st_size >> 20) + L"M";
-	else if (info.st_size >> 10) size = to_wstring (info.st_size >> 10) + L"K";
+	std::wstring size;
+	if (!suffixize (info.st_size, 40, L'T', size) &&
+		!suffixize (info.st_size, 30, L'G', size) &&
+		!suffixize (info.st_size, 20, L'M', size) &&
+		!suffixize (info.st_size, 10, L'K', size))
+		size = to_wstring (info.st_size);
 	e.cols[entry::SIZE] = apply_attrs (size, 0);
 
 	wchar_t buf[32] = L"";
