@@ -930,14 +930,16 @@ readfail:
 }
 
 fun run_program (initializer_list<const char *> list, const string &filename) {
+	auto args = (!filename.empty() && filename.front() == '-' ? " -- " : " ")
+		+ shell_escape (filename);
 	if (g.ext_helpers) {
-		// XXX: this doesn't try them all out, though it shouldn't make any
-		// noticeable difference
+		// XXX: this doesn't try them all out,
+		// though it shouldn't make any noticeable difference
 		const char *found = nullptr;
 		for (auto program : list)
 			if ((found = program))
 				break;
-		g.ext_helper = found + (" -- " + shell_escape (filename));
+		g.ext_helper.assign (found).append (args);
 		g.quitting = true;
 		return;
 	}
@@ -953,8 +955,8 @@ fun run_program (initializer_list<const char *> list, const string &filename) {
 		tcsetpgrp (STDOUT_FILENO, getpgid (0));
 
 		for (auto program : list)
-			if (program) execl ("/bin/sh", "/bin/sh", "-c", (string (program)
-				+ " " + shell_escape (filename)).c_str (), NULL);
+			if (program) execl ("/bin/sh", "/bin/sh", "-c",
+				(program + args).c_str (), NULL);
 		_exit (EXIT_FAILURE);
 	default:
 		// ...and make sure of it in the parent as well
