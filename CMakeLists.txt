@@ -8,8 +8,12 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 endif ()
 
 find_package (PkgConfig REQUIRED)
-pkg_check_modules (NCURSESW REQUIRED ncursesw)
 pkg_check_modules (ACL libacl)
+pkg_check_modules (NCURSESW ncursesw)
+if (NOT NCURSESW_FOUND)
+	find_library (NCURSESW_LIBRARIES NAMES ncursesw)
+	find_path (NCURSESW_INCLUDE_DIRS ncurses.h PATH_SUFFIXES ncurses)
+endif ()
 
 add_executable (${PROJECT_NAME} ${PROJECT_NAME}.cpp)
 target_include_directories (${PROJECT_NAME} PUBLIC ${NCURSESW_INCLUDE_DIRS})

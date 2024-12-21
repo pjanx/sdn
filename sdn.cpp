@@ -39,22 +39,22 @@
 #include <libgen.h>
 #include <pwd.h>
 #include <signal.h>
-#include <sys/acl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #ifdef __linux__
-#include <acl/libacl.h>
 #include <sys/inotify.h>
+// ACL information is not important enough to be ported
+#include <acl/libacl.h>
+#include <sys/acl.h>
+#include <sys/xattr.h>
 #else
 #include <sys/event.h>
 #endif
 #include <ncurses.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/xattr.h>
 
 // To implement cbreak() with disabled ^S that gets reënabled on endwin()
 #define NCURSES_INTERNALS
