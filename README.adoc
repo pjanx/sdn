@@ -11,8 +11,8 @@ commands.  It enables you to:
    can be simply forwarded if it is to be edited.  What's more, it will always
    be obvious whether the navigator is running.
 
-The only supported platform is Linux.  I wanted to try a different, simpler
-approach here, and the end result is very friendly to tinkering.
+'sdn' runs on Linux and all BSD derivatives.  I wanted to try a different,
+simpler approach here, and the end result is very friendly to tinkering.
 
 image::sdn.png[align="center"]
 

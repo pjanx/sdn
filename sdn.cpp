@@ -45,9 +45,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifdef __linux__
 #include <acl/libacl.h>
-#include <ncurses.h>
 #include <sys/inotify.h>
+#else
+#include <sys/event.h>
+#endif
+#include <ncurses.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
@@ -57,9 +61,10 @@
 #include <term.h>
 #undef CTRL  // term.h -> termios.h -> sys/ttydefaults.h, too simplistic
 
-// Unicode is complex enough already and we might make assumptions
 #ifndef __STDC_ISO_10646__
-#error Unicode required for wchar_t
+// Unicode is complex enough already and we might make assumptions,
+// though macOS doesn't define this despite using UCS-4,
+// and we won't build on Windows that seems to be the only one to use UTF-16.
 #endif
 
 // Trailing return types make C++ syntax suck considerably less
@@ -303,7 +308,21 @@ fun xdg_config_write (const string &suffix) -> unique_ptr<fstream> {
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-using ncstring = basic_string<cchar_t>;
+// This should be basic_string, however that crashes on macOS
+using ncstring = vector<cchar_t>;
+
+fun operator+ (const ncstring &lhs, const ncstring &rhs) -> ncstring {
+	ncstring result;
+	result.reserve (lhs.size () + rhs.size ());
+	result.insert (result.end (), lhs.begin (), lhs.end ());
+	result.insert (result.end (), rhs.begin (), rhs.end ());
+	return result;
+}
+
+fun operator+= (ncstring &lhs, const ncstring &rhs) -> ncstring & {
+	lhs.insert (lhs.end (), rhs.begin (), rhs.end ());
+	return lhs;
+}
 
 fun cchar (chtype attrs, wchar_t c) -> cchar_t {
 	cchar_t ch {}; wchar_t ws[] = {c, 0};
@@ -538,7 +557,7 @@ static struct {
 	bool no_chdir;                      ///< Do not tell the shell to chdir
 	bool quitting;                      ///< Whether we should quit already
 
-	int inotify_fd, inotify_wd = -1;    ///< File watch
+	int watch_fd, watch_wd = -1;        ///< File watch (inotify/kqueue)
 	bool out_of_date;                   ///< Entries may be out of date
 
 	const wchar_t *editor;              ///< Prompt string for editing
@@ -597,8 +616,10 @@ fun ls_format (const entry &e, bool for_target) -> chtype {
 			set (LS_MULTIHARDLINK);
 		if ((info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)))
 			set (LS_EXECUTABLE);
+#ifdef __linux__
 		if (lgetxattr (name.c_str (), "security.capability", NULL, 0) >= 0)
 			set (LS_CAPABILITY);
+#endif
 		if ((info.st_mode & S_ISGID))
 			set (LS_SETGID);
 		if ((info.st_mode & S_ISUID))
@@ -692,11 +713,13 @@ fun make_entry (const struct dirent *f) -> entry {
 	}
 
 	auto mode = decode_mode (info.st_mode);
+#ifdef __linux__
 	// We're using a laughably small subset of libacl: this translates to
 	// two lgetxattr() calls, the results of which are compared with
 	// specific architecture-dependent constants.  Linux-only.
 	if (acl_extended_file_nofollow (f->d_name) > 0)
 		mode += L"+";
+#endif
 	e.cols[entry::MODES] = apply_attrs (mode, 0);
 
 	auto usr = g.unames.find (info.st_uid);
@@ -726,8 +749,8 @@ fun make_entry (const struct dirent *f) -> entry {
 	auto &fn = e.cols[entry::FILENAME] =
 		apply_attrs (to_wide (e.filename), ls_format (e, false));
 	if (!e.target_path.empty ()) {
-		fn.append (apply_attrs (L" -> ", 0));
-		fn.append (apply_attrs (to_wide (e.target_path), ls_format (e, true)));
+		fn += apply_attrs (L" -> ", 0);
+		fn += apply_attrs (to_wide (e.target_path), ls_format (e, true));
 	}
 	return e;
 }
@@ -797,8 +820,8 @@ fun update () {
 			print (info, info_width);
 		}
 
-		auto start = sanitize (prompt + line.substr (0, g.editor_cursor));
-		move (LINES - 1, compute_width (start));
+		line.resize (g.editor_cursor);
+		move (LINES - 1, compute_width (sanitize (prompt + line)));
 		curs_set (1);
 	} else if (!g.message.empty ()) {
 		move (LINES - 1, 0);
@@ -921,12 +944,25 @@ readfail:
 	g.cursor = max (0, min (g.cursor, int (g.entries.size ()) - 1));
 	g.offset = max (0, min (g.offset, int (g.entries.size ()) - 1));
 
-	if (g.inotify_wd != -1)
-		inotify_rm_watch (g.inotify_fd, g.inotify_wd);
+#ifdef __linux__
+	if (g.watch_wd != -1)
+		inotify_rm_watch (g.watch_fd, g.watch_wd);
 
 	// We don't show atime, so access and open are merely spam
-	g.inotify_wd = inotify_add_watch (g.inotify_fd, ".",
+	g.watch_wd = inotify_add_watch (g.watch_fd, ".",
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
+#else
+	if (g.watch_wd != -1)
+		close (g.watch_wd);
+
+	if ((g.watch_wd = open (".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)) >= 0) {
+		// At least the macOS kqueue doesn't report anything too specific
+		struct kevent ev {};
+		EV_SET (&ev, g.watch_wd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+			NOTE_WRITE | NOTE_LINK, 0, nullptr);
+		(void) kevent (g.watch_fd, &ev, 1, nullptr, 0, nullptr);
+	}
+#endif
 }
 
 fun run_program (initializer_list<const char *> list, const string &filename) {
@@ -1550,19 +1586,27 @@ fun handle (wint_t c) -> bool {
 	return !g.quitting;
 }
 
-fun inotify_check () {
-	// Only provide simple indication that contents might have changed
-	char buf[4096]; ssize_t len;
+fun watch_check () {
 	bool changed = false;
-	while ((len = read (g.inotify_fd, buf, sizeof buf)) > 0) {
+	// Only provide simple indication that contents might have changed,
+	// if only because kqueue can't do any better
+#ifdef __linux__
+	char buf[4096]; ssize_t len;
+	while ((len = read (g.watch_fd, buf, sizeof buf)) > 0) {
 		const inotify_event *e;
 		for (char *ptr = buf; ptr < buf + len; ptr += sizeof *e + e->len) {
 			e = (const inotify_event *) buf;
-			if (e->wd == g.inotify_wd)
-				changed = g.out_of_date = true;
+			if (e->wd == g.watch_wd)
+				changed = true;
 		}
 	}
-	if (changed)
+#else
+	struct kevent ev {};
+	struct timespec timeout {};
+	if (kevent (g.watch_fd, nullptr, 0, &ev, 1, &timeout) > 0)
+		changed = ev.filter == EVFILT_VNODE && (ev.fflags & NOTE_WRITE);
+#endif
+	if ((g.out_of_date = changed))
 		update ();
 }
 
@@ -1884,10 +1928,17 @@ int main (int argc, char *argv[]) {
 	// So that the neither us nor our children stop on tcsetpgrp()
 	signal (SIGTTOU, SIG_IGN);
 
-	if ((g.inotify_fd = inotify_init1 (IN_NONBLOCK)) < 0) {
+#ifdef __linux__
+	if ((g.watch_fd = inotify_init1 (IN_NONBLOCK)) < 0) {
 		cerr << "cannot initialize inotify" << endl;
 		return 1;
 	}
+#else
+	if ((g.watch_fd = kqueue ()) < 0) {
+		cerr << "cannot initialize kqueue" << endl;
+		return 1;
+	}
+#endif
 
 	locale::global (locale (""));
 	load_bindings ();
@@ -1924,7 +1975,7 @@ int main (int argc, char *argv[]) {
 
 	wint_t c;
 	while (!read_key (c) || handle (c)) {
-		inotify_check ();
+		watch_check ();
 		if (g.sort_flash_ttl && !--g.sort_flash_ttl)
 			update ();
 		if (g.message_ttl && !--g.message_ttl) {
