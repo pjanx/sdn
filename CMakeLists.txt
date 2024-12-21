@@ -16,7 +16,10 @@ if (NOT NCURSESW_FOUND)
 endif ()
 
 add_executable (${PROJECT_NAME} ${PROJECT_NAME}.cpp)
-target_include_directories (${PROJECT_NAME} PUBLIC ${NCURSESW_INCLUDE_DIRS})
+target_include_directories (${PROJECT_NAME}
+	PUBLIC ${NCURSESW_INCLUDE_DIRS} ${ACL_INCLUDE_DIRS})
+target_link_directories (${PROJECT_NAME}
+	PUBLIC ${NCURSESW_LIBRARY_DIRS} ${ACL_LIBRARY_DIRS})
 target_link_libraries (${PROJECT_NAME}
 	PUBLIC ${NCURSESW_LIBRARIES} ${ACL_LIBRARIES})
 target_compile_features (${PROJECT_NAME} PUBLIC cxx_std_14)
