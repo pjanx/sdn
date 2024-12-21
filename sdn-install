@@ -125,7 +125,7 @@ done
 
 # Figure out the shell to integrate with
 login=$(basename "$SHELL")
-actual=$(ps -p $$ -o ppid= | xargs ps -o comm= -p)
+actual=$(ps -p $$ -o ppid= | xargs ps -o comm= -p | sed 's/^-//')
 if [ -z "$shell" ]
 then
   if [ "$login" != "$actual" ]
