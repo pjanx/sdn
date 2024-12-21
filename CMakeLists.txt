@@ -1,6 +1,6 @@
 # target_compile_features has been introduced in that version
 cmake_minimum_required (VERSION 3.1...3.27)
-project (sdn VERSION 0.1 LANGUAGES CXX)
+project (sdn VERSION 1.0 LANGUAGES CXX)
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 	set (CMAKE_CXX_FLAGS

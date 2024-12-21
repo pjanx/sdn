@@ -26,7 +26,7 @@ or as a https://git.janouch.name/p/nixexprs[Nix derivation].
 Building
 --------
 Build dependencies: CMake and/or make, a C++14 compiler, pkg-config +
-Runtime dependencies: ncursesw, libacl
+Runtime dependencies: ncursesw, libacl (on Linux)
 
 // Working around libasciidoc's missing support for escaping it like \++
 Unfortunately most LLVM libc{plus}{plus} versions have a bug that crashes 'sdn'
