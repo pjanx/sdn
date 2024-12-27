@@ -1,3 +1,11 @@
+Unreleased
+
+ * Added an sdn-view script that can process Midnight Commander mc.ext.ini files
+   and apply matching filters; this script has been made the default F3 binding,
+   while the original direct pager invocation has been moved to F13 (which also
+   reflects Midnight Commander)
+
+
 1.0.0 (2024-12-21)
 
  * Initial release

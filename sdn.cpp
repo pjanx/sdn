@@ -428,7 +428,8 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define CTRL(char) ((char) == '?' ? 0x7f : (char) & 0x1f)
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
-	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
+	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW_RAW) XX(VIEW) XX(EDIT) \
+	XX(SORT_LEFT) XX(SORT_RIGHT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
 	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CENTER) \
 	XX(CHDIR) XX(PARENT) XX(GO_START) XX(GO_HOME) \
@@ -451,7 +452,8 @@ static map<wint_t, action> g_normal_actions {
 	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
 	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
 	{KEY (F (1)), ACTION_HELP}, {'h', ACTION_HELP},
-	{KEY (F (3)), ACTION_VIEW}, {KEY (F (4)), ACTION_EDIT},
+	{KEY (F (3)), ACTION_VIEW}, {KEY (F (13)), ACTION_VIEW_RAW},
+	{KEY (F (4)), ACTION_EDIT},
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT},
@@ -1015,10 +1017,15 @@ fun run_program (initializer_list<const char *> list, const string &filename) {
 	update ();
 }
 
-fun view (const string &filename) {
+fun view_raw (const string &filename) {
 	// XXX: we cannot realistically detect that the pager hasn't made a pause
 	// at the end of the file, so we can't ensure all contents have been seen
 	run_program ({(const char *) getenv ("PAGER"), "less", "cat"}, filename);
+}
+
+fun view (const string &filename) {
+	run_program ({(const char *) getenv ("SDN_VIEWER"), "sdn-view",
+		(const char *) getenv ("PAGER"), "less", "cat"}, filename);
 }
 
 fun edit (const string &filename) {
@@ -1445,8 +1452,11 @@ fun handle (wint_t c) -> bool {
 	case ACTION_CHOOSE:
 		choose (current);
 		break;
-	case ACTION_VIEW:
+	case ACTION_VIEW_RAW:
 		// Mimic mc, it does not seem sensible to page directories
+		(is_directory ? change_dir : view_raw) (current.filename);
+		break;
+	case ACTION_VIEW:
 		(is_directory ? change_dir : view) (current.filename);
 		break;
 	case ACTION_EDIT:
