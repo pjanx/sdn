@@ -14,198 +14,41 @@ if command -v mc >/dev/null
 then datadir=$(mc --datadir | sed 's/ (.*)$//')
 fi
 
-export SDN_VIEW_CONFIG=
+config=
 for dir in "$HOME"/.config/mc "$datadir" /etc/mc
 do
 	if [ -n "$dir" -a -f "$dir/mc.ext.ini" ]
 	then
-		SDN_VIEW_CONFIG=$dir/mc.ext.ini
+		config=$dir/mc.ext.ini
 		break
 	fi
 done
 
+# This is often used in %env{} expansion, so let's be on the same page.
 export PAGER=${PAGER:-less}
+
 export MC_EXT_FILENAME=$(realpath "$1")
 export MC_EXT_BASENAME=$(basename "$1")
-export MC_EXT_CURRENTDIR=$(dirname "$1")
-export SDN_VIEW_TYPE=$(file -bz "$1")
-process() (awk -f - <<'EOF'
-BEGIN {
-	if (!(Config = ENVIRON["SDN_VIEW_CONFIG"]))
-		exit
+export MC_EXT_CURRENTDIR=$(dirname "$MC_EXT_FILENAME")
+output=$(sdn-mc-ext <"$config" "$(file -Lbz "$1")" \
+	"$MC_EXT_FILENAME" "$MC_EXT_BASENAME" "$MC_EXT_CURRENTDIR" View || :)
+kind=$(echo "$output" | sed -n 1p)
+command=$(echo "$output" | sed -n 2p)
 
-	Verb = "View"
-	Section = ""
-	while ((getline < Config) > 0) {
-		if (/^\s*(#.*)?$/) {
-			# Skip.
-		} else if (/^\[[^]]+\]$/) {
-			Sections[++SectionsLen] = Section = substr($0, 2, length($0) - 2)
-		} else if (/^[^=]+=[^=]*$/) {
-			split($0, kv, "=")
-			Keys[Section, kv[1]] = kv[2]
-		}
-	}
-
-	Type     = ENVIRON["SDN_VIEW_TYPE"]
-	Path     = ENVIRON["MC_EXT_FILENAME"]
-	Basename = ENVIRON["MC_EXT_BASENAME"]
-	Dirname  = ENVIRON["MC_EXT_CURRENTDIR"]
-
-	for (i = 1; i <= SectionsLen; i++) {
-		if (Sections[i] == "mc.ext.ini" ||
-			Sections[i] == "Default" ||
-			Sections[i] ~ /^Include[\/]/)
-			continue
-		try(Sections[i])
-	}
-
-	# Not attempting any inclusions here.
-	print expand_command(Keys["Default", Verb])
-}
-
-function try(section,    pair, a, key, full, include) {
-	for (pair in Keys) {
-		split(pair, a, SUBSEP)
-		if (a[1] == section)
-			full[a[2]] = Keys[pair]
-	}
-	if ("Include" in full) {
-		delete full["Open"]
-		delete full["View"]
-		delete full["Edit"]
-		include = "Include/" full["Include"]
-		for (pair in Keys) {
-			split(pair, a, SUBSEP)
-			if (a[1] == include)
-				full[a[2]] = Keys[pair]
-		}
-	}
-	if (ENVIRON["SDN_VIEW_DEBUG"]) {
-		print "[" section "]" > "/dev/stderr"
-		for (key in full)
-			print "  " key ": " full[key] > "/dev/stderr"
-	}
-	if (Verb in full && section_matches(full, Type, Basename)) {
-		print expand_command(full[Verb])
-		exit
-	}
-}
-
-function shell_escape(string) {
-	gsub(/'/, "'\\''", string)
-	return "'" string "'"
-}
-
-function expand_command(cmd,    toview, out, seq, argument, value, a, pipe) {
-	out = ""
-	while (match(cmd, /%[a-zA-Z]*\{[^}]*\}|%[a-zA-Z]+|%%/)) {
-		out = out substr(cmd, 1, RSTART - 1)
-		seq = substr(cmd, RSTART + 1, RLENGTH - 1)
-		cmd = substr(cmd, RSTART + RLENGTH)
-
-		argument = ""
-		if (match(seq, /\{.*\}$/)) {
-			argument = substr(seq, RSTART + 1, RLENGTH - 2)
-			seq = substr(seq, 1, RSTART - 1)
-		}
-
-		if (seq == "%") {
-			out = out "%"
-		} else if (seq == "p") {
-			out = out shell_escape(Basename)
-		} else if (seq == "f") {
-			out = out shell_escape(Path)
-		} else if (seq == "d") {
-			out = out shell_escape(Dirname)
-		} else if (seq == "view") {
-			toview = 1
-
-			sub(/^ +/, "", cmd)
-			split(argument, a, /,/)
-			for (value in a) {
-				if (a[value] == "hex")
-					pipe = pipe " | od -t x1"
-
-				# more(1) and less(1) either ignore or display this:
-				#if (a[value] == "nroff")
-				#	pipe = pipe " | col -b"
-			}
-		} else if (seq == "var") {
-			value = ""
-			if (!match(argument, /:.*/)) {
-				if (argument in ENVIRON)
-					value = ENVIRON[argument]
-			} else {
-				value = substr(argument, RSTART + 1)
-				argument = substr(argument, 1, RSTART - 1)
-				if (argument in ENVIRON)
-					value = ENVIRON[argument]
-			}
-			out = out shell_escape(value)
-		} else if (seq == "") {
-			print Config ": prompting not supported" > "/dev/stderr"
-			return
-		} else {
-			print Config ": unsupported: %" seq > "/dev/stderr"
-			return
-		}
-	}
-	out = out cmd pipe
-
-	# While the processing is mostly generic for all verbs,
-	# we'd have to distinguish non-view commands in this AWK script's output.
-	if (!toview)
-		return
-
-	# In the case of out == "", we should just explicitly pass it to the pager,
-	# however it currently mixes with the case of "we can't use this View=".
-	return out
-}
-
-function section_matches(section, type, basename,    value) {
-	if ("Directory" in section)
-		return 0
-
-	if ("Type" in section) {
-		value = section["Type"]
-		if ("TypeIgnoreCase" in section &&
-			section["TypeIgnoreCase"] == "true") {
-			type = tolower(type)
-			value = tolower(value)
-		}
-		gsub(/\\\\/, "\\", value)
-		gsub(/\\ /, " ", value)
-		if (type !~ value)
-			return 0
-	}
-	if ("Regex" in section) {
-		value = section["Regex"]
-		if ("RegexIgnoreCase" in section &&
-			section["RegexIgnoreCase"] == "true") {
-			basename = tolower(basename)
-			value = tolower(value)
-		}
-		gsub(/\\\\/, "\\", value)
-		return basename ~ value
-	} else if ("Shell" in section) {
-		value = section["Shell"]
-		if ("RegexIgnoreCase" in section &&
-			section["ShellIgnoreCase"] == "true") {
-			basename = tolower(basename)
-			value = tolower(value)
-		}
-		if (value !~ /^[.]/)
-			return value == basename
-		return length(basename) >= length(value) &&
-			substr(basename, length(basename) - length(value) + 1) == value
-	}
-	return type != ""
-}
-EOF
-)
-command=$(process)
-if [ -z "$command" ]
-then "$PAGER" -- "$MC_EXT_FILENAME"
-else eval "$command" | "$PAGER"
-fi
+case "$kind" in
+view)
+	if [ -n "$command" ]
+	then eval "$command" | "$PAGER"
+	else "$PAGER" -- "$MC_EXT_FILENAME"
+	fi
+	;;
+'')
+	if [ -n "$command" ]
+	then eval "$command"
+	else "$PAGER" -- "$MC_EXT_FILENAME"
+	fi
+	;;
+*)
+	echo "Unsupported: $kind" >&2
+	exit 1
+esac

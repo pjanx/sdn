@@ -26,9 +26,14 @@ target_compile_features (${PROJECT_NAME} PUBLIC cxx_std_14)
 target_compile_definitions (${PROJECT_NAME} PUBLIC
 	-DPROJECT_NAME=\"${PROJECT_NAME}\" -DPROJECT_VERSION=\"${PROJECT_VERSION}\")
 
+add_executable (${PROJECT_NAME}-mc-ext ${PROJECT_NAME}-mc-ext.cpp)
+target_compile_features (${PROJECT_NAME}-mc-ext PUBLIC cxx_std_17)
+
 include (GNUInstallDirs)
-install (TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
-install (PROGRAMS ${PROJECT_NAME}-install ${PROJECT_NAME}-view
+# sdn-mc-ext should be in libexec, but we prefer it in PATH.
+install (TARGETS sdn sdn-mc-ext
+	DESTINATION ${CMAKE_INSTALL_BINDIR})
+install (PROGRAMS sdn-install sdn-view
 	DESTINATION ${CMAKE_INSTALL_BINDIR})
 install (FILES sdn.1 sdn-install.1 sdn-view.1
 	DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
