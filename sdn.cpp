@@ -28,6 +28,8 @@
 #include <locale>
 #include <map>
 #include <memory>
+#include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -428,8 +430,9 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define CTRL(char) ((char) == '?' ? 0x7f : (char) & 0x1f)
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
-	XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW_RAW) XX(VIEW) XX(EDIT) \
+	XX(ENTER) XX(CHOOSE) XX(CHOOSE_FULL) XX(VIEW_RAW) XX(VIEW) XX(EDIT) \
 	XX(SORT_LEFT) XX(SORT_RIGHT) \
+	XX(SELECT) XX(DESELECT) XX(SELECT_TOGGLE) XX(SELECT_ABORT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
 	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CENTER) \
 	XX(CHDIR) XX(PARENT) XX(GO_START) XX(GO_HOME) \
@@ -449,15 +452,18 @@ static const char *g_action_names[] = {ACTIONS(XX)};
 #undef XX
 
 static map<wint_t, action> g_normal_actions {
-	{ALT | '\r', ACTION_CHOOSE_FULL}, {ALT | KEY (ENTER), ACTION_CHOOSE_FULL},
-	{'\r', ACTION_CHOOSE}, {KEY (ENTER), ACTION_CHOOSE},
+	{'\r', ACTION_ENTER}, {KEY (ENTER), ACTION_ENTER},
+	{ALT | '\r', ACTION_CHOOSE}, {ALT | KEY (ENTER), ACTION_CHOOSE},
+	{'t', ACTION_CHOOSE}, {'T', ACTION_CHOOSE_FULL},
 	{KEY (F (1)), ACTION_HELP}, {'h', ACTION_HELP},
 	{KEY (F (3)), ACTION_VIEW}, {KEY (F (13)), ACTION_VIEW_RAW},
 	{KEY (F (4)), ACTION_EDIT},
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
-	{ALT | 'o', ACTION_QUIT},
-	{'<', ACTION_SORT_LEFT}, {'>', ACTION_SORT_RIGHT},
+	{ALT | 'o', ACTION_QUIT}, {'<', ACTION_SORT_LEFT}, {'>', ACTION_SORT_RIGHT},
+	{'+', ACTION_SELECT}, {'-', ACTION_DESELECT},
+	{CTRL ('T'), ACTION_SELECT_TOGGLE}, {KEY (IC), ACTION_SELECT_TOGGLE},
+	{27, ACTION_SELECT_ABORT}, {CTRL ('G'), ACTION_SELECT_ABORT},
 	{'k', ACTION_UP}, {CTRL ('P'), ACTION_UP}, {KEY (UP), ACTION_UP},
 	{'j', ACTION_DOWN}, {CTRL ('N'), ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'g', ACTION_TOP}, {ALT | '<', ACTION_TOP}, {KEY (HOME), ACTION_TOP},
@@ -471,7 +477,7 @@ static map<wint_t, action> g_normal_actions {
 	{'/', ACTION_SEARCH}, {'s', ACTION_SEARCH}, {CTRL ('S'), ACTION_SEARCH},
 	{ALT | 'e', ACTION_RENAME_PREFILL}, {'e', ACTION_RENAME},
 	{KEY (F (6)), ACTION_RENAME_PREFILL}, {KEY (F (7)), ACTION_MKDIR},
-	{'t', ACTION_TOGGLE_FULL}, {ALT | 't', ACTION_TOGGLE_FULL},
+	{ALT | 't', ACTION_TOGGLE_FULL},
 	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
 	{CTRL ('L'), ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
@@ -533,6 +539,7 @@ struct entry {
 struct level {
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	string path, filename;              ///< Level path and filename at cursor
+	set<string> selection;              ///< Filenames of selected entries
 };
 
 static struct {
@@ -540,6 +547,7 @@ static struct {
 	string cwd;                         ///< Current working directory
 	string start_dir;                   ///< Starting directory
 	vector<entry> entries;              ///< Current directory entries
+	set<string> selection;              ///< Filenames of selected entries
 	vector<level> levels;               ///< Upper directory levels
 	int offset, cursor;                 ///< Scroll offset and cursor position
 	bool full_view;                     ///< Show extended information
@@ -554,7 +562,7 @@ static struct {
 	wstring message;                    ///< Message for the user
 	int message_ttl;                    ///< Time to live for the message
 
-	string chosen;                      ///< Chosen item for the command line
+	vector<string> chosen;              ///< Chosen items for the command line
 	string ext_helper;                  ///< External helper to run
 	bool no_chdir;                      ///< Do not tell the shell to chdir
 	bool quitting;                      ///< Whether we should quit already
@@ -570,10 +578,11 @@ static struct {
 	void (*editor_on_change) ();        ///< Callback on editor change
 	map<action, void (*) ()> editor_on; ///< Handlers for custom actions
 
-	enum { AT_CURSOR, AT_BAR, AT_CWD, AT_INPUT, AT_INFO, AT_CMDLINE, AT_COUNT };
-	chtype attrs[AT_COUNT] = {A_REVERSE, 0, A_BOLD, 0, A_ITALIC, 0};
+	enum { AT_CURSOR, AT_SELECT, AT_BAR, AT_CWD, AT_INPUT, AT_INFO, AT_CMDLINE,
+		AT_COUNT };
+	chtype attrs[AT_COUNT] = {A_REVERSE, A_BOLD, 0, A_BOLD, 0, A_ITALIC, 0};
 	const char *attr_names[AT_COUNT] =
-		{"cursor", "bar", "cwd", "input", "info", "cmdline"};
+		{"cursor", "select", "bar", "cwd", "input", "info", "cmdline"};
 
 	map<int, chtype> ls_colors;         ///< LS_COLORS decoded
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
@@ -769,18 +778,25 @@ fun update () {
 	int used = min (available, all - g.offset);
 	for (int i = 0; i < used; i++) {
 		auto index = g.offset + i;
-		bool selected = index == g.cursor;
-		attrset (selected ? g.attrs[g.AT_CURSOR] : 0);
+		bool cursored = index == g.cursor;
+		bool selected = g.selection.count (g.entries[index].filename);
+		chtype attrs {};
+		if (selected)
+			attrs = g.attrs[g.AT_SELECT];
+		if (cursored)
+			attrs = g.attrs[g.AT_CURSOR] | (attrs & ~A_COLOR);
+		attrset (attrs);
+
 		move (g.gravity ? (available - used + i) : i, 0);
 
 		auto used = 0;
 		for (int col = start_column; col < entry::COLUMNS; col++) {
 			const auto &field = g.entries[index].cols[col];
 			auto aligned = align (field, alignment[col] * g.max_widths[col]);
+			if (cursored || selected)
+				for_each (begin (aligned), end (aligned), decolor);
 			if (g.sort_flash_ttl && col == g.sort_column)
 				for_each (begin (aligned), end (aligned), invert);
-			if (selected)
-				for_each (begin (aligned), end (aligned), decolor);
 			used += print (aligned + apply_attrs (L" ", 0), COLS - used);
 		}
 		hline (' ', COLS - used);
@@ -828,6 +844,17 @@ fun update () {
 	} else if (!g.message.empty ()) {
 		move (LINES - 1, 0);
 		print (apply_attrs (g.message, 0), COLS);
+	} else if (!g.selection.empty ()) {
+		uint64_t size = 0;
+		for (const auto &e : g.entries)
+			if (g.selection.count (e.filename)
+			 && S_ISREG (e.info.st_mode) && e.info.st_size > 0)
+				size += e.info.st_size;
+
+		wostringstream status;
+		status << size << L" bytes in " << g.selection.size () << L" items";
+		move (LINES - 1, 0);
+		print (apply_attrs (status.str (), g.attrs[g.AT_SELECT]), COLS);
 	} else if (!g.cmdline.empty ()) {
 		move (LINES - 1, 0);
 		print (g.cmdline, COLS);
@@ -895,6 +922,15 @@ fun show_message (const string &message, int ttl = 30) {
 	g.message_ttl = ttl;
 }
 
+fun filter_selection (const set<string> &selection) {
+	set<string> reselection;
+	if (!selection.empty ())
+		for (const auto &e : g.entries)
+			if (selection.count (e.filename))
+				reselection.insert (e.filename);
+	return reselection;
+}
+
 fun reload (bool keep_anchor) {
 	g.unames.clear ();
 	while (auto *ent = getpwent ())
@@ -933,6 +969,8 @@ fun reload (bool keep_anchor) {
 	}
 	closedir (dir);
 
+	g.selection = filter_selection (g.selection);
+
 readfail:
 	g.out_of_date = false;
 	for (int col = 0; col < entry::COLUMNS; col++) {
@@ -968,7 +1006,7 @@ readfail:
 }
 
 fun run_program (initializer_list<const char *> list, const string &filename) {
-	auto args = (!filename.empty() && filename.front() == '-' ? " -- " : " ")
+	auto args = (!filename.empty () && filename.front () == '-' ? " -- " : " ")
 		+ shell_escape (filename);
 	if (g.ext_helpers) {
 		// XXX: this doesn't try them all out,
@@ -1099,6 +1137,17 @@ fun show_help () {
 	fclose (contents);
 }
 
+fun matches_to_editor_info (int matches) {
+	if (g.editor_line.empty ())
+		g.editor_info.clear ();
+	else if (matches == 0)
+		g.editor_info = L"(no match)";
+	else if (matches == 1)
+		g.editor_info = L"(1 match)";
+	else
+		g.editor_info = L"(" + to_wstring (matches) + L" matches)";
+}
+
 fun match (const wstring &needle, int push) -> int {
 	string pattern = to_mb (needle) + "*";
 	bool jump_to_first = push || fnmatch (pattern.c_str (),
@@ -1115,15 +1164,23 @@ fun match (const wstring &needle, int push) -> int {
 }
 
 fun match_interactive (int push) {
-	int matches = match (g.editor_line, push);
-	if (g.editor_line.empty ())
-		g.editor_info.clear ();
-	else if (matches == 0)
-		g.editor_info = L"(no match)";
-	else if (matches == 1)
-		g.editor_info = L"(1 match)";
-	else
-		g.editor_info = L"(" + to_wstring (matches) + L" matches)";
+	matches_to_editor_info (match (g.editor_line, push));
+}
+
+fun select_matches (bool dotdot) -> set<string> {
+	set<string> matches;
+	for (const auto &e : g.entries) {
+		if (!dotdot && e.filename == "..")
+			continue;
+		if (!fnmatch (to_mb (g.editor_line).c_str (),
+			e.filename.c_str (), FNM_PATHNAME))
+			matches.insert (e.filename);
+	}
+	return matches;
+}
+
+fun select_interactive (bool dotdot) {
+	matches_to_editor_info (select_matches (dotdot).size ());
 }
 
 /// Stays on the current item unless there are better matches
@@ -1184,6 +1241,7 @@ fun pop_levels (const string &old_cwd) {
 			g.offset = i->offset;
 			g.cursor = i->cursor;
 			anchor = i->filename;
+			g.selection = filter_selection (i->selection);
 		}
 		i++;
 		g.levels.pop_back ();
@@ -1268,9 +1326,12 @@ fun change_dir (const string &path) {
 		return;
 	}
 
-	level last {g.offset, g.cursor, g.cwd, at_cursor ().filename};
+	level last {g.offset, g.cursor, g.cwd, at_cursor ().filename, g.selection};
 	g.cwd = full_path;
 	bool same_path = last.path == g.cwd;
+	if (!same_path)
+		g.selection.clear ();
+
 	reload (same_path);
 
 	if (!same_path) {
@@ -1308,12 +1369,23 @@ fun initial_cwd () -> string {
 	return ok ? pwd : cwd;
 }
 
-fun choose (const entry &entry) {
+fun choose (const entry &entry, bool full) {
+	if (g.selection.empty ())
+		g.selection.insert (entry.filename);
+	for (const string &item : g.selection)
+		g.chosen.push_back (full ? absolutize (g.cwd, item) : item);
+
+	g.selection.clear ();
+	g.no_chdir = full;
+	g.quitting = true;
+}
+
+fun enter (const entry &entry) {
 	// Dive into directories and accessible symlinks to them
 	if (!S_ISDIR (entry.info.st_mode)
 	 && !S_ISDIR (entry.target_info.st_mode)) {
-		g.chosen = entry.filename;
-		g.quitting = true;
+		// This could rather launch ${SDN_OPEN:-xdg-open} or something
+		choose (entry, false);
 	} else {
 		change_dir (entry.filename);
 	}
@@ -1444,13 +1516,13 @@ fun handle (wint_t c) -> bool {
 	auto i = g_normal_actions.find (c);
 	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_CHOOSE_FULL:
-		// FIXME: in the root directory, this inserts //item
-		g.chosen = g.cwd + "/" + current.filename;
-		g.no_chdir = true;
-		g.quitting = true;
+		choose (current, true);
 		break;
 	case ACTION_CHOOSE:
-		choose (current);
+		choose (current, false);
+		break;
+	case ACTION_ENTER:
+		enter (current);
 		break;
 	case ACTION_VIEW_RAW:
 		// Mimic mc, it does not seem sensible to page directories
@@ -1481,6 +1553,33 @@ fun handle (wint_t c) -> bool {
 		g.sort_column = (g.sort_column + entry::COLUMNS + 1) % entry::COLUMNS;
 		g.sort_flash_ttl = 2;
 		resort ();
+		break;
+
+	case ACTION_SELECT:
+		g.editor = L"select";
+		g.editor_on_change                = [] { select_interactive (false); };
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
+			auto matches = select_matches (false);
+			g.selection.insert (begin (matches), end (matches));
+		};
+		break;
+	case ACTION_DESELECT:
+		g.editor = L"deselect";
+		g.editor_on_change                = [] { select_interactive (true); };
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] {
+			for (const auto &match : select_matches (true))
+				g.selection.erase (match);
+		};
+		break;
+	case ACTION_SELECT_TOGGLE:
+		if (g.selection.count (current.filename))
+			g.selection.erase (current.filename);
+		else
+			g.selection.insert (current.filename);
+		g.cursor++;
+		break;
+	case ACTION_SELECT_ABORT:
+		g.selection.clear ();
 		break;
 
 	case ACTION_UP:
@@ -1544,7 +1643,7 @@ fun handle (wint_t c) -> bool {
 		g.editor_on_change                = [] { match_interactive (0); };
 		g.editor_on[ACTION_UP]            = [] { match_interactive (-1); };
 		g.editor_on[ACTION_DOWN]          = [] { match_interactive (+1); };
-		g.editor_on[ACTION_INPUT_CONFIRM] = [] { choose (at_cursor ()); };
+		g.editor_on[ACTION_INPUT_CONFIRM] = [] { enter (at_cursor ()); };
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
@@ -1858,10 +1957,11 @@ fun load_bindings () {
 }
 
 fun load_history_level (const vector<string> &v) {
-	if (v.size () != 7)
+	if (v.size () < 7)
 		return;
 	// Not checking the hostname and parent PID right now since we can't merge
-	g.levels.push_back ({stoi (v.at (4)), stoi (v.at (5)), v.at (3), v.at (6)});
+	g.levels.push_back ({stoi (v.at (4)), stoi (v.at (5)), v.at (3), v.at (6),
+		set<string> (begin (v) + 7, end (v))});
 }
 
 fun load_config () {
@@ -1909,12 +2009,16 @@ fun save_config () {
 		*hostname = 0;
 
 	auto ppid = std::to_string (getppid ());
-	for (auto i = g.levels.begin (); i != g.levels.end (); i++)
-		write_line (*config, {"history", hostname, ppid, i->path,
-			to_string (i->offset), to_string (i->cursor), i->filename});
-	write_line (*config, {"history", hostname, ppid, g.cwd,
-		to_string (g.offset), to_string (g.cursor),
-		at_cursor ().filename});
+	for (auto i = g.levels.begin (); i != g.levels.end (); i++) {
+		vector<string> line {"history", hostname, ppid, i->path,
+			to_string (i->offset), to_string (i->cursor), i->filename};
+		line.insert (end (line), begin (i->selection), end (i->selection));
+		write_line (*config, line);
+	}
+	vector<string> line {"history", hostname, ppid, g.cwd,
+		to_string (g.offset), to_string (g.cursor), at_cursor ().filename};
+	line.insert (end (line), begin (g.selection), end (g.selection));
+	write_line (*config, line);
 }
 
 int main (int argc, char *argv[]) {
@@ -1997,8 +2101,12 @@ int main (int argc, char *argv[]) {
 	save_config ();
 
 	// Presumably it is going to end up as an argument, so quote it
-	if (!g.chosen.empty ())
-		g.chosen = shell_escape (g.chosen);
+	string chosen;
+	for (const auto &item : g.chosen) {
+		if (!chosen.empty ())
+			chosen += ' ';
+		chosen += shell_escape (item);
+	}
 
 	// We can't portably create a standard stream from an FD, so modify the FD
 	dup2 (output_fd, STDOUT_FILENO);
@@ -2009,7 +2117,7 @@ int main (int argc, char *argv[]) {
 	else
 		cout << "local cd=" << endl;
 
-	cout << "local insert=" << shell_escape (g.chosen) << endl;
+	cout << "local insert=" << shell_escape (chosen) << endl;
 	cout << "local helper=" << shell_escape (g.ext_helper) << endl;
 	return 0;
 }
