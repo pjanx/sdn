@@ -499,6 +499,7 @@ static map<wint_t, action> g_input_actions {
 static map<wint_t, action> g_search_actions {
 	{CTRL ('P'), ACTION_UP}, {KEY (UP), ACTION_UP},
 	{CTRL ('N'), ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
+	{'/', ACTION_ENTER},
 };
 static const map<string, map<wint_t, action>*> g_binding_contexts {
 	{"normal", &g_normal_actions}, {"input", &g_input_actions},
@@ -1644,6 +1645,11 @@ fun handle (wint_t c) -> bool {
 		g.editor_on[ACTION_UP]            = [] { match_interactive (-1); };
 		g.editor_on[ACTION_DOWN]          = [] { match_interactive (+1); };
 		g.editor_on[ACTION_INPUT_CONFIRM] = [] { enter (at_cursor ()); };
+		g.editor_on[ACTION_ENTER]         = [] {
+			enter (at_cursor ());
+			g.editor_line.clear ();
+			g.editor_cursor = 0;
+		};
 		break;
 	case ACTION_RENAME_PREFILL:
 		g.editor_line = to_wide (current.filename);
