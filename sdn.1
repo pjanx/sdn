@@ -1,5 +1,5 @@
 \" https://mandoc.bsd.lv/man/roff.7.html#Sentence_Spacing
-.Dd October 27, 2020
+.Dd December 30, 2024
 .Dt SDN 1
 .Os
 .Sh NAME
@@ -95,7 +95,7 @@ names are used for special keys.
 To obtain more vifm-like controls and Windows-like quit abilities:
 .Bd -literal -offset indent
 normal h parent
-normal l choose
+normal l enter
 normal M-f4 quit
 .Ed
 .Pp
@@ -107,7 +107,7 @@ For rxvt, that would be:
 define C-ppage ^[[5^
 define C-npage ^[[6^
 normal C-ppage parent
-normal C-npage choose
+normal C-npage enter
 .Ed
 .Pp
 Escape characters must be inserted verbatim, e.g., by pressing C-v ESC in vi,
@@ -120,6 +120,7 @@ For a black-on-white terminal supporting 256 colours, a theme such as the
 following may work:
 .Bd -literal -offset indent
 cursor 231 202
+select 202 bold
 bar 16 255 ul
 cwd bold
 input

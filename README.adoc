@@ -5,7 +5,8 @@ sdn
 'sdn' is a simple directory navigator that you can invoke while editing shell
 commands.  It enables you to:
 
- * take a quick peek at directory contents without running `ls`
+ * take a quick peek at directory contents without running `ls`;
+ * select files to insert into the command line;
  * browse the filesystem without all the mess that Midnight Commander does:
    there's no need to create a subshell in a new pty.  The current command line
    can be simply forwarded if it is to be edited.  What's more, it will always
@@ -75,6 +76,7 @@ that of git, only named colours aren't supported:
 
 ....
 cursor 231 202
+select 202 bold
 bar 16 255 ul
 cwd bold
 input
@@ -91,15 +93,19 @@ To obtain more vifm-like controls, you may write the following to your
 
 ....
 normal h parent
-normal l choose
+normal l enter
 ....
 
 Helper programs
 ~~~~~~~~~~~~~~~
-The F3 and F4 keys are normally bound to actions 'view' and 'edit', similarly to
-Norton Commander and other orthodox file managers.  The helper programs used
-here may be changed by setting the PAGER and VISUAL (or EDITOR) environment
-variables.
+The F3, F13 and F4 keys are normally bound to actions 'view', 'view-raw',
+and 'edit', similarly to Norton Commander and other orthodox file managers.
+The helper programs used here may be changed by setting the PAGER and VISUAL
+(or EDITOR) environment variables.
+
+If 'view' finds Midnight Commander, it will make use of its configuration
+to apply any matching filter, such as to produce archive listings,
+or it will run the respective command.
 
 While it is mostly possible to get 'mcview' working using an invocation like
 `PAGER='mcview -u' sdn`, beware that this helper cannot read files from its
