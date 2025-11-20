@@ -33,9 +33,9 @@ include (GNUInstallDirs)
 # sdn-mc-ext should be in libexec, but we prefer it in PATH.
 install (TARGETS sdn sdn-mc-ext
 	DESTINATION ${CMAKE_INSTALL_BINDIR})
-install (PROGRAMS sdn-install sdn-view
+install (PROGRAMS sdn-install sdn-open sdn-view
 	DESTINATION ${CMAKE_INSTALL_BINDIR})
-install (FILES sdn.1 sdn-install.1 sdn-view.1
+install (FILES sdn.1 sdn-install.1 sdn-open.1 sdn-view.1
 	DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install (FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
 

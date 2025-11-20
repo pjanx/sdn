@@ -5,13 +5,16 @@ Unreleased
     - + and - adjust the selection using shell globs;
     - t and T insert the selection into the external command line
       in relative or absolute form, respectively;
-	- Enter is like t but enters directories, and M-Enter is synonymous to t;
+    - Enter is like t but enters directories;
     - C-g or Escape clear the selection, similarly to the editor.
 
  * Added an sdn-view script that can process Midnight Commander mc.ext.ini files
    and apply matching filters; this script has been made the default F3 binding,
    while the original direct pager invocation has been moved to F13 (which also
    reflects Midnight Commander)
+
+ * Added an sdn-open script which does the same kind of processing as above
+   on top of xdg-open.  This is what is now executed by M-Enter.
 
 
 1.0.0 (2024-12-21)

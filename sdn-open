@@ -1,0 +1,52 @@
+#!/bin/sh -e
+# sdn-open: an opener for sdn that makes use of Midnight Commander configuration
+# to make more kinds of files directly openable
+
+if [ "$#" -ne 1 ]
+then
+	echo "Usage: $0 FILE" >&2
+	exit 2
+fi
+
+# This handles both MC_DATADIR and odd installation locations.
+datadir=
+if command -v mc >/dev/null
+then datadir=$(mc --datadir | sed 's/ (.*)$//')
+fi
+
+config=
+for dir in "$HOME"/.config/mc "$datadir" /etc/mc
+do
+	if [ -n "$dir" -a -f "$dir/mc.ext.ini" ]
+	then
+		config=$dir/mc.ext.ini
+		break
+	fi
+done
+
+# This is often used in %env{} expansion, so let's be on the same page.
+export PAGER=${PAGER:-less}
+
+export MC_EXT_FILENAME=$(realpath "$1")
+export MC_EXT_BASENAME=$(basename "$1")
+export MC_EXT_CURRENTDIR=$(dirname "$MC_EXT_FILENAME")
+output=$(sdn-mc-ext <"$config" "$(file -Lbz "$1")" \
+	"$MC_EXT_FILENAME" "$MC_EXT_BASENAME" "$MC_EXT_CURRENTDIR" Open || :)
+kind=$(echo "$output" | sed -n 1p)
+command=$(echo "$output" | sed -n 2p)
+
+case "$kind" in
+cd)
+	# These mostly enter virtual filesystems, which we do not understand.
+	xdg-open "$MC_EXT_FILENAME"
+	;;
+'')
+	if [ -n "$command" ]
+	then eval "$command"
+	else xdg-open "$MC_EXT_FILENAME"
+	fi
+	;;
+*)
+	echo "Unsupported: $kind" >&2
+	exit 1
+esac
