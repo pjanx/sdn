@@ -35,15 +35,35 @@ output=$(sdn-mc-ext <"$config" "$(file -Lbz "$1")" \
 kind=$(echo "$output" | sed -n 1p)
 command=$(echo "$output" | sed -n 2p)
 
+# We're trying to retain any explicit user preferences while navigating through:
+#  - Debian-based systems have /etc/alternatives/open as /usr/bin/open,
+#    pointing to either /usr/bin/xdg-open or /usr/bin/run-mailcap;
+#  - macOS has /usr/bin/open, and typically no xdg-open;
+#  - Windows Subsystem for Linux has explorer.exe in PATH,
+#    where launched applications may have problems with UNC paths,
+#    and possibly also xdg-open that may not be capable of opening much.
+#
+# Both macOS open and Windows explorer.exe are capable of opening files,
+# directories, as well as URLs through native associations.
+if [ -n "$MC_XDG_OPEN" ]
+then :
+elif command -v explorer.exe >/dev/null
+then export MC_XDG_OPEN=explorer.exe
+elif command -v open >/dev/null
+then export MC_XDG_OPEN=open
+elif command -v xdg-open >/dev/null
+then export MC_XDG_OPEN=xdg-open
+fi
+
 case "$kind" in
 cd)
 	# These mostly enter virtual filesystems, which we do not understand.
-	xdg-open "$MC_EXT_FILENAME"
+	"$MC_XDG_OPEN" "$MC_EXT_FILENAME"
 	;;
 '')
 	if [ -n "$command" ]
 	then eval "$command"
-	else xdg-open "$MC_EXT_FILENAME"
+	else "$MC_XDG_OPEN" "$MC_EXT_FILENAME"
 	fi
 	;;
 *)
