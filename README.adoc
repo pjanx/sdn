@@ -30,10 +30,6 @@ Building
 Build dependencies: CMake and/or make, a C++17 compiler, pkg-config +
 Runtime dependencies: ncursesw, libacl (on Linux)
 
-// Working around libasciidoc's missing support for escaping it like \++
-Unfortunately most LLVM libc{plus}{plus} versions have a bug that crashes 'sdn'
-on start.  Use GNU libstdc{plus}{plus} if you're affected.
-
  $ git clone https://git.janouch.name/p/sdn.git
  $ mkdir sdn/build
  $ cd sdn/build
