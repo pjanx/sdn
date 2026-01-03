@@ -7,13 +7,20 @@ CPPFLAGS = `sed -ne '/^project (\([^ )]*\) VERSION \([^ )]*\).*/ \
 sdn: sdn.cpp CMakeLists.txt
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ \
 	-lacl `pkg-config --libs --cflags ncursesw`
+
 sdn-static: sdn.cpp CMakeLists.txt
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ \
-	-static-libstdc++ \
+	-static -lacl `pkg-config --static --libs --cflags ncursesw`
+
+# Works for Debian derivatives and Alpine, resulting in only a libc dependency.
+sdn-portable: sdn.cpp CMakeLists.txt
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ \
+	-static-libstdc++ -static-libgcc \
 	-Wl,--start-group,-Bstatic \
 	-lacl `pkg-config --static --libs --cflags ncursesw` \
 	-Wl,--end-group,-Bdynamic
+
 clean:
-	rm -f sdn sdn-static
+	rm -f sdn sdn-static sdn-portable
 
 .PHONY: clean
