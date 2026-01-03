@@ -24,7 +24,10 @@ target_link_libraries (${PROJECT_NAME}
 	PUBLIC ${NCURSESW_LIBRARIES} ${ACL_LIBRARIES})
 target_compile_features (${PROJECT_NAME} PUBLIC cxx_std_14)
 target_compile_definitions (${PROJECT_NAME} PUBLIC
-	-DPROJECT_NAME=\"${PROJECT_NAME}\" -DPROJECT_VERSION=\"${PROJECT_VERSION}\")
+	PROJECT_NAME=\"${PROJECT_NAME}\" PROJECT_VERSION=\"${PROJECT_VERSION}\")
+if (MSYS)
+	target_compile_definitions (${PROJECT_NAME} PUBLIC _GNU_SOURCE)
+endif ()
 
 add_executable (${PROJECT_NAME}-mc-ext ${PROJECT_NAME}-mc-ext.cpp)
 target_compile_features (${PROJECT_NAME}-mc-ext PUBLIC cxx_std_17)

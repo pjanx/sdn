@@ -16,6 +16,8 @@ Unreleased
  * Added an sdn-open script which does the same kind of processing as above
    on top of xdg-open.  This is what is now executed by M-Enter.
 
+ * Added support for Cygwin, in particular the MSYS2 flavour.
+
 
 1.0.0 (2024-12-21)
 

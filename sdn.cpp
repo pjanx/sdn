@@ -1,7 +1,7 @@
 //
 // sdn: simple directory navigator
 //
-// Copyright (c) 2017 - 2025, Přemysl Eric Janouch <p@janouch.name>
+// Copyright (c) 2017 - 2026, Přemysl Eric Janouch <p@janouch.name>
 //
 // Permission to use, copy, modify, and/or distribute this software for any
 // purpose with or without fee is hereby granted.
@@ -53,7 +53,7 @@
 #include <acl/libacl.h>
 #include <sys/acl.h>
 #include <sys/xattr.h>
-#else
+#elif !defined __CYGWIN__
 #include <sys/event.h>
 #endif
 #include <ncurses.h>
@@ -425,6 +425,15 @@ fun decode_attrs (const vector<string> &attrs) -> chtype {
 
 // --- Application -------------------------------------------------------------
 
+using Key =
+#if WINT_MAX >= INT32_MAX
+	wint_t;
+#elif WINT_MIN < 0
+	int32_t;
+#else
+	uint32_t;
+#endif
+
 enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 #define KEY(name) (SYM | KEY_ ## name)
 #define CTRL(char) ((char) == '?' ? 0x7f : (char) & 0x1f)
@@ -451,7 +460,7 @@ enum action { ACTIONS(XX) ACTION_COUNT };
 static const char *g_action_names[] = {ACTIONS(XX)};
 #undef XX
 
-static map<wint_t, action> g_normal_actions {
+static map<Key, action> g_normal_actions {
 	{'\r', ACTION_ENTER}, {KEY (ENTER), ACTION_ENTER},
 	{ALT | '\r', ACTION_OPEN}, {ALT | KEY (ENTER), ACTION_OPEN},
 	{'t', ACTION_CHOOSE}, {'T', ACTION_CHOOSE_FULL},
@@ -481,7 +490,7 @@ static map<wint_t, action> g_normal_actions {
 	{'R', ACTION_REVERSE_SORT}, {ALT | '.', ACTION_SHOW_HIDDEN},
 	{CTRL ('L'), ACTION_REDRAW}, {'r', ACTION_RELOAD},
 };
-static map<wint_t, action> g_input_actions {
+static map<Key, action> g_input_actions {
 	{27, ACTION_INPUT_ABORT}, {CTRL ('G'), ACTION_INPUT_ABORT},
 	{L'\r', ACTION_INPUT_CONFIRM}, {KEY (ENTER), ACTION_INPUT_CONFIRM},
 	// Sometimes terminfo is wrong, we need to accept both of these
@@ -496,12 +505,12 @@ static map<wint_t, action> g_input_actions {
 	{CTRL ('A'), ACTION_INPUT_BEGINNING}, {KEY (HOME), ACTION_INPUT_BEGINNING},
 	{CTRL ('E'), ACTION_INPUT_END}, {KEY (END), ACTION_INPUT_END},
 };
-static map<wint_t, action> g_search_actions {
+static map<Key, action> g_search_actions {
 	{CTRL ('P'), ACTION_UP}, {KEY (UP), ACTION_UP},
 	{CTRL ('N'), ACTION_DOWN}, {KEY (DOWN), ACTION_DOWN},
 	{'/', ACTION_ENTER},
 };
-static const map<string, map<wint_t, action>*> g_binding_contexts {
+static const map<string, map<Key, action>*> g_binding_contexts {
 	{"normal", &g_normal_actions}, {"input", &g_input_actions},
 	{"search", &g_search_actions},
 };
@@ -589,9 +598,9 @@ static struct {
 	map<string, chtype> ls_exts;        ///< LS_COLORS file extensions
 	bool ls_symlink_as_target;          ///< ln=target in dircolors
 
-	map<string, wint_t, stringcaseless> name_to_key;
-	map<wint_t, string> key_to_name;
-	map<string, wint_t> custom_keys;
+	map<string, Key, stringcaseless> name_to_key;
+	map<Key, string> key_to_name;
+	map<string, Key> custom_keys;
 	string action_names[ACTION_COUNT];  ///< Stylized action names
 
 	// Refreshed by reload():
@@ -992,7 +1001,7 @@ readfail:
 	// We don't show atime, so access and open are merely spam
 	g.watch_wd = inotify_add_watch (g.watch_fd, ".",
 		(IN_ALL_EVENTS | IN_ONLYDIR | IN_EXCL_UNLINK) & ~(IN_ACCESS | IN_OPEN));
-#else
+#elif !defined __CYGWIN__
 	if (g.watch_wd != -1)
 		close (g.watch_wd);
 
@@ -1107,17 +1116,17 @@ fun run_pager (FILE *contents) {
 	update ();
 }
 
-fun encode_key (wint_t key) -> string {
+fun encode_key (Key k) -> string {
 	string encoded;
-	if (key & ALT)
+	if (k & ALT)
 		encoded.append ("M-");
-	wchar_t bare = key & ~ALT;
+	Key bare = k & ~ALT;
 	if (g.key_to_name.count (bare))
 		encoded.append (capitalize (g.key_to_name.at (bare)));
 	else if (bare < 32 || bare == 0x7f)
 		encoded.append ("C-").append ({char (tolower ((bare + 64) & 0x7f))});
 	else
-		encoded.append (to_mb ({bare}));
+		encoded.append (to_mb ({wchar_t (bare)}));
 	return encoded;
 }
 
@@ -1405,19 +1414,19 @@ fun move_towards_spacing (int diff) -> bool {
 		wcwidth (g.editor_line.at (g.editor_cursor));
 }
 
-fun handle_editor (wint_t c) {
+fun handle_editor (Key k) {
 	auto action = ACTION_NONE;
 	if (g.editor_inserting) {
 		(void) halfdelay (1);
 		g.editor_inserting = false;
 	} else {
-		auto i = g_input_actions.find (c);
+		auto i = g_input_actions.find (k);
 		if (i != g_input_actions.end ())
 			action = i->second;
 
 		auto m = g_binding_contexts.find (to_mb (g.editor));
 		if (m != g_binding_contexts.end () &&
-			(i = m->second->find (c)) != m->second->end ())
+			(i = m->second->find (k)) != m->second->end ())
 			action = i->second;
 	}
 
@@ -1492,11 +1501,11 @@ fun handle_editor (wint_t c) {
 	default:
 		if (auto handler = g.editor_on[action]) {
 			handler ();
-		} else if (c & (ALT | SYM)) {
-			if (c != KEY (RESIZE))
+		} else if (k & (ALT | SYM)) {
+			if (k != KEY (RESIZE))
 				beep ();
 		} else {
-			g.editor_line.insert (g.editor_cursor, 1, c);
+			g.editor_line.insert (g.editor_cursor, 1, k);
 			g.editor_cursor++;
 		}
 	}
@@ -1504,14 +1513,14 @@ fun handle_editor (wint_t c) {
 		g.editor_on_change ();
 }
 
-fun handle (wint_t c) -> bool {
-	if (c == WEOF)
+fun handle (Key k) -> bool {
+	if (k == WEOF)
 		return false;
 
 	// If an editor is active, let it handle the key instead and eat it
 	if (g.editor) {
-		handle_editor (c);
-		c = WEOF;
+		handle_editor (k);
+		k = WEOF;
 	}
 
 	const auto &current = at_cursor ();
@@ -1519,7 +1528,7 @@ fun handle (wint_t c) -> bool {
 		S_ISDIR (current.info.st_mode) ||
 		S_ISDIR (current.target_info.st_mode);
 
-	auto i = g_normal_actions.find (c);
+	auto i = g_normal_actions.find (k);
 	switch (i == g_normal_actions.end () ? ACTION_NONE : i->second) {
 	case ACTION_CHOOSE_FULL:
 		choose (current, true);
@@ -1701,7 +1710,7 @@ fun handle (wint_t c) -> bool {
 		reload (true);
 		break;
 	default:
-		if (c != KEY (RESIZE) && c != WEOF)
+		if (k != KEY (RESIZE) && k != WEOF)
 			beep ();
 	}
 	fix_cursor_and_offset ();
@@ -1723,7 +1732,7 @@ fun watch_check () {
 				changed = true;
 		}
 	}
-#else
+#elif !defined __CYGWIN__
 	struct kevent ev {};
 	struct timespec timeout {};
 	if (kevent (g.watch_fd, nullptr, 0, &ev, 1, &timeout) > 0)
@@ -1836,7 +1845,7 @@ fun monotonic_ts_ms () -> int64_t {
 	return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
 }
 
-fun read_key (wint_t &c) -> bool {
+fun read_key (Key &k) -> bool {
 	// XXX: on at least some systems, when run over ssh in a bind handler,
 	// after closing the terminal emulator we receive no fatal signal but our
 	// parent shell gets reparented under init and our stdin gets closed,
@@ -1845,37 +1854,40 @@ fun read_key (wint_t &c) -> bool {
 	// situation appears to be via timing.  Checking errno doesn't work and
 	// resetting signal dispositions or the signal mask has no effect.
 	auto start = monotonic_ts_ms ();
+
+	wint_t c{};
 	int res = get_wch (&c);
 	if (res == ERR) {
 		c = WEOF;
 		if (monotonic_ts_ms () - start >= 50)
 			return false;
 	}
+	k = c;
 
 	wint_t metafied{};
-	if (c == 27 && (res = get_wch (&metafied)) != ERR)
-		c = ALT | metafied;
+	if (k == 27 && (res = get_wch (&metafied)) != ERR)
+		k = ALT | metafied;
 	if (res == KEY_CODE_YES)
-		c |= SYM;
+		k |= SYM;
 	return true;
 }
 
-fun parse_key (const string &key_name) -> wint_t {
-	wint_t c{};
+fun parse_key (const string &key_name) -> Key {
+	Key k{};
 	auto p = key_name.c_str ();
 	if (!strncmp (p, "M-", 2)) {
-		c |= ALT;
+		k |= ALT;
 		p += 2;
 	}
 	if (g.name_to_key.count (p)) {
-		return c | g.name_to_key.at (p);
+		return k | g.name_to_key.at (p);
 	} else if (!strncmp (p, "C-", 2)) {
 		p += 2;
 		if (*p < '?' || *p > '~') {
 			cerr << "bindings: invalid combination: " << key_name << endl;
 			return WEOF;
 		}
-		c |= CTRL (*p);
+		k |= CTRL (*p);
 		p += 1;
 	} else {
 		wchar_t w; mbstate_t mb {};
@@ -1888,18 +1900,18 @@ fun parse_key (const string &key_name) -> wint_t {
 			cerr << "bindings: invalid encoding: " << key_name << endl;
 			return WEOF;
 		}
-		c |= w;
+		k |= w;
 		p += res;
 	}
 	if (*p) {
 		cerr << "key name has unparsable trailing part: " << key_name << endl;
 		return WEOF;
 	}
-	return c;
+	return k;
 }
 
-fun learn_named_key (const string &name, wint_t key) {
-	g.name_to_key[g.key_to_name[key] = name] = key;
+fun learn_named_key (const string &name, Key k) {
+	g.name_to_key[g.key_to_name[k] = name] = k;
 }
 
 fun load_bindings () {
@@ -1958,15 +1970,15 @@ fun load_bindings () {
 			cerr << "bindings: invalid context: " << context << endl;
 			continue;
 		}
-		wint_t c = parse_key (key_name);
-		if (c == WEOF)
+		Key k = parse_key (key_name);
+		if (k == WEOF)
 			continue;
 		auto i = actions.find (action);
 		if (i == actions.end ()) {
 			cerr << "bindings: invalid action: " << action << endl;
 			continue;
 		}
-		(*m->second)[c] = i->second;
+		(*m->second)[k] = i->second;
 	}
 }
 
@@ -2061,14 +2073,20 @@ int main (int argc, char *argv[]) {
 		cerr << "cannot initialize inotify" << endl;
 		return 1;
 	}
-#else
+#elif !defined __CYGWIN__
 	if ((g.watch_fd = kqueue ()) < 0) {
 		cerr << "cannot initialize kqueue" << endl;
 		return 1;
 	}
 #endif
 
-	locale::global (locale (""));
+	try {
+		// Under MSYS2, the C++ locale mechanism cannot load UTF-8 this way.
+		locale::global (locale (""));
+	} catch (const runtime_error &) {
+		setlocale (LC_CTYPE, "");
+	}
+
 	load_bindings ();
 	load_config ();
 
@@ -2101,8 +2119,8 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
-	wint_t c;
-	while (!read_key (c) || handle (c)) {
+	Key k;
+	while (!read_key (k) || handle (k)) {
 		watch_check ();
 		if (g.sort_flash_ttl && !--g.sort_flash_ttl)
 			update ();
