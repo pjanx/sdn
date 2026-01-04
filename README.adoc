@@ -31,7 +31,7 @@ simply place the binaries somewhere in your PATH.
 Building
 --------
 Build-only dependencies: CMake and/or make, a C++17 compiler, pkg-config +
-Runtime dependencies: ncursesw, libacl (on Linux)
+Runtime dependencies: ncursesw, libacl (on Linux) +
 Optional runtime dependencies: Midnight Commander
 
  $ git clone https://git.janouch.name/p/sdn.git
