@@ -25,13 +25,14 @@ You can get a package with the latest development version using Arch Linux's
 https://aur.archlinux.org/packages/sdn-git[AUR],
 or as a https://git.janouch.name/p/nixexprs[Nix derivation].
 
-https://janouch.name/cd[Static Linux builds for x86_64 can be found here],
+https://janouch.name/cd[Static Linux builds can be found here],
 simply place the binaries somewhere in your PATH.
 
 Building
 --------
-Build dependencies: CMake and/or make, a C++17 compiler, pkg-config +
+Build-only dependencies: CMake and/or make, a C++17 compiler, pkg-config +
 Runtime dependencies: ncursesw, libacl (on Linux)
+Optional runtime dependencies: Midnight Commander
 
  $ git clone https://git.janouch.name/p/sdn.git
  $ mkdir sdn/build
