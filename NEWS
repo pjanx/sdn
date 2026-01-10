@@ -1,4 +1,4 @@
-Unreleased
+1.1.0 (2026-01-10)
 
  * Added selection functionality, and adjusted key bindings:
     - C-t or Insert toggle whether the current item is selected;
