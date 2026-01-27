@@ -99,13 +99,13 @@ normal l enter
 
 Helper programs
 ~~~~~~~~~~~~~~~
-The F3, F13 and F4 keys are normally bound to actions 'view', 'view-raw',
-and 'edit', similarly to Norton Commander and other orthodox file managers.
-The helper programs used here may be changed by setting the PAGER and VISUAL
-(or EDITOR) environment variables.
+The F3, F13, F4, F14 keys are normally bound to actions 'view', 'view-raw',
+'edit', and 'edit-raw', similarly to Norton Commander and other orthodox
+file managers.  The helper programs used here may be changed by setting
+the PAGER and VISUAL (or EDITOR) environment variables.
 
-If 'view' finds Midnight Commander, it will make use of its configuration
-to apply any matching filter, such as to produce archive listings,
+If 'view' and 'edit' find Midnight Commander, they will make use of its
+configuration to apply any matching filter, such as to produce archive listings,
 or it will run the respective command.
 
 While it is mostly possible to get 'mcview' working using an invocation like
