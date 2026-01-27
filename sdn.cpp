@@ -440,7 +440,7 @@ enum { ALT = 1 << 24, SYM = 1 << 25 };  // Outside the range of Unicode
 
 #define ACTIONS(XX) XX(NONE) XX(HELP) XX(QUIT) XX(QUIT_NO_CHDIR) \
 	XX(ENTER) XX(OPEN) XX(CHOOSE) XX(CHOOSE_FULL) \
-	XX(VIEW_RAW) XX(VIEW) XX(EDIT) XX(SORT_LEFT) XX(SORT_RIGHT) \
+	XX(VIEW_RAW) XX(VIEW) XX(EDIT) XX(EDIT_RAW) XX(SORT_LEFT) XX(SORT_RIGHT) \
 	XX(SELECT) XX(DESELECT) XX(SELECT_TOGGLE) XX(SELECT_ABORT) \
 	XX(UP) XX(DOWN) XX(TOP) XX(BOTTOM) XX(HIGH) XX(MIDDLE) XX(LOW) \
 	XX(PAGE_PREVIOUS) XX(PAGE_NEXT) XX(SCROLL_UP) XX(SCROLL_DOWN) XX(CENTER) \
@@ -466,7 +466,7 @@ static map<Key, action> g_normal_actions {
 	{'t', ACTION_CHOOSE}, {'T', ACTION_CHOOSE_FULL},
 	{KEY (F (1)), ACTION_HELP}, {'h', ACTION_HELP},
 	{KEY (F (3)), ACTION_VIEW}, {KEY (F (13)), ACTION_VIEW_RAW},
-	{KEY (F (4)), ACTION_EDIT},
+	{KEY (F (4)), ACTION_EDIT}, {KEY (F (14)), ACTION_EDIT_RAW},
 	{'q', ACTION_QUIT}, {ALT | 'q', ACTION_QUIT_NO_CHDIR},
 	// M-o ought to be the same shortcut the navigator is launched with
 	{ALT | 'o', ACTION_QUIT}, {'<', ACTION_SORT_LEFT}, {'>', ACTION_SORT_RIGHT},
@@ -1081,9 +1081,16 @@ fun sdn_view (const string &filename) {
 		(const char *) getenv ("PAGER"), "less", "cat"}, filename);
 }
 
-fun edit (const string &filename) {
-	run_program ({(const char *) getenv ("VISUAL"),
-		(const char *) getenv ("EDITOR"), "vi"}, filename);
+fun edit_raw (const string &filename) {
+	run_program ({
+		(const char *) getenv ("VISUAL"), (const char *) getenv ("EDITOR"),
+		"vi"}, filename);
+}
+
+fun sdn_edit (const string &filename) {
+	run_program ({(const char *) getenv ("SDN_EDITOR"), "sdn-edit",
+		(const char *) getenv ("VISUAL"), (const char *) getenv ("EDITOR"),
+		"vi"}, filename);
 }
 
 fun run_pager (FILE *contents) {
@@ -1550,7 +1557,10 @@ fun handle (Key k) -> bool {
 		(is_directory ? change_dir : sdn_view) (current.filename);
 		break;
 	case ACTION_EDIT:
-		edit (current.filename);
+		sdn_edit (current.filename);
+		break;
+	case ACTION_EDIT_RAW:
+		edit_raw (current.filename);
 		break;
 	case ACTION_HELP:
 		show_help ();
