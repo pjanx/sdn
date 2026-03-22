@@ -1738,7 +1738,7 @@ fun watch_check () {
 	while ((len = read (g.watch_fd, buf, sizeof buf)) > 0) {
 		const inotify_event *e;
 		for (char *ptr = buf; ptr < buf + len; ptr += sizeof *e + e->len) {
-			e = (const inotify_event *) buf;
+			e = (const inotify_event *) ptr;
 			if (e->wd == g.watch_wd)
 				changed = true;
 		}
