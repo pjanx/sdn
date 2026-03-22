@@ -1,5 +1,8 @@
 Unreleased
 
+ * Added C-b and C-f bindings for page up and page down navigation
+   in normal mode.
+
  * Added an sdn-edit script analogous to sdn-view, bound it to F4,
    and moved the original key binding to F14.
 
