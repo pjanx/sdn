@@ -1636,10 +1636,10 @@ fun handle (Key k) -> bool {
 		break;
 
 	case ACTION_PAGE_PREVIOUS:
-		g.cursor -= LINES;
+		g.cursor -= visible_lines ();
 		break;
 	case ACTION_PAGE_NEXT:
-		g.cursor += LINES;
+		g.cursor += visible_lines ();
 		break;
 	case ACTION_SCROLL_DOWN:
 		g.offset++;
